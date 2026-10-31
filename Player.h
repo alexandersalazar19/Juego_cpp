@@ -9,6 +9,7 @@ public:
     void draw() const;
 
     Vector2 getPos() const;
+    float getRadio() const;
 
 private:
     Vector2 pos;

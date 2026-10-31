@@ -32,3 +32,4 @@ void Player::draw() const {
 }
 
 Vector2 Player::getPos() const {return pos;}
+float Player::getRadio() const {return radio;}
