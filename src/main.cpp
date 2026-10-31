@@ -74,7 +74,7 @@ int main(){
 
                 for(auto it=obstaculos.begin();it!=obstaculos.end();){
                     (*it)->update(dt);
-                    if((*it)->collidesWith(jugador.getPos(),jugador.getRadio())) estado=Estado::GameOver;
+                    if(!jugador.esInvulnerable() && (*it)->collidesWith(jugador.getPos(),jugador.getRadio())) estado=Estado::GameOver;
 
                     if((*it)->isOffscreen()){
                         puntos+=puntosPor((*it)->getPoints(),cfg,nivel);
@@ -102,6 +102,7 @@ int main(){
                 EndScissorMode();
     
                 dibujarHud(puntos,cfg.nombre,nivel,tiempoJugado);
+                dibujarCargas(jugador);
     
                 if(estado==Estado::GameOver){
                     Vector2 m=Arena::centro();

@@ -4,7 +4,14 @@
 #include "game/Arena.h"
 using namespace std;
 
-Player::Player(float x,float y):pos{x,y},radio(14.0F),velocidad(340.0F){}
+namespace{
+    const int MAX_CARGAS=3;
+    const float TIEMPO_RECARGA=6.0F;
+    const float ALCANCE_TP=0.0F;
+    const float INVUL_TP=0.0F;
+}
+
+Player::Player(float x,float y):pos{x,y},radio(14.0F),velocidad(340.0F),cargas(MAX_CARGAS),recarga(0.0F),invul(0.0F){}
 
 void Player::update(float dt){
     Vector2 dir={0.0F,0.0F};
@@ -27,11 +34,52 @@ void Player::update(float dt){
     Rectangle a=Arena::area();
     pos.x=clamp(pos.x,a.x+radio,a.x+a.width-radio);
     pos.y=clamp(pos.y,a.y+radio,a.y+a.height-radio);
+
+    if(invul>0) invul-=dt;
+    if(cargas<MAX_CARGAS){
+        recarga+=dt;
+        if(recarga>=TIEMPO_RECARGA){
+            cargas++;
+            recarga=0.0F;
+        }
+    }
+    if(cargas>0 && IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(GetMousePosition(),Arena::area())){
+        pos=destinoTp();
+        cargas--;
+        invul=INVUL_TP;
+    }
 }
 
 void Player::draw() const {
-    DrawCircleV(pos,radio,MAROON);
+    Color c=MAROON;
+    if(invul>0 && !((int)(invul*10)%2)) c=Fade(MAROON,0.35F); //parpadeo
+    if(cargas>0 && CheckCollisionPointRec(GetMousePosition(),Arena::area())){
+        if(ALCANCE_TP>0) DrawCircleLinesV(pos,ALCANCE_TP,Fade(GRAY,0.5F));
+        DrawCircleLinesV(destinoTp(),radio,Fade(MAROON,0.6F));
+    }
+    DrawCircleV(pos,radio,c);
+}
+
+Vector2 Player::destinoTp() const {
+    Rectangle a=Arena::area();
+    Vector2 m=GetMousePosition();
+    if(ALCANCE_TP>0){
+        float dx=m.x-pos.x;
+        float dy=m.y-pos.y;
+        float d=std::sqrt(dx*dx+dy*dy);
+        if(d>ALCANCE_TP){
+            m.x=pos.x+dx/d*ALCANCE_TP;
+            m.y=pos.y+dy/d*ALCANCE_TP;
+        }
+    }
+    m.x=std::clamp(m.x,a.x+radio,a.x+a.width-radio);
+    m.y=std::clamp(m.y,a.y+radio,a.y+a.height-radio);
+    return m;
 }
 
 Vector2 Player::getPos() const {return pos;}
 float Player::getRadio() const {return radio;}
+bool Player::esInvulnerable() const {return invul>0;}
+int Player::getCargas() const {return cargas;}
+int Player::getMaxCargas() const {return MAX_CARGAS;}
+float Player::getProgresoRecarga() const {return (cargas>=MAX_CARGAS) ? 1.0F : recarga/TIEMPO_RECARGA;}

@@ -41,3 +41,20 @@ void dibujarHud(int puntos,const char* dificultad,int nivel,float tiempo){
     const char* textNivel=TextFormat("Nivel %d",nivel);
     DrawText(textNivel,W-MeasureText(textNivel,tam)-margen,y,tam,WHITE);
 }
+
+void dibujarCargas(const Player& jugador){
+    const int W=GetScreenWidth();
+    const int r=14;
+    const int sep=44;
+    int n=jugador.getMaxCargas();
+    int x0=W*3/4-(n-1)*sep/2;
+    float y=Arena::HUD_ALTO/2;
+    for(int i=0;i<n;i++){
+        Vector2 c={(float)(x0+i*sep),y};
+        if(i<jugador.getCargas()) DrawCircleV(c,r,SKYBLUE);
+        else{
+            DrawCircleLinesV(c,r,SKYBLUE);
+            if(i==jugador.getCargas()) DrawCircleSector(c,r,-90.0F,-90.0F+360.0F*jugador.getProgresoRecarga(),32,Fade(SKYBLUE,0.5F));
+        }
+    }
+}
