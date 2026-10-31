@@ -1,4 +1,5 @@
 #include "Wall.h"
+#include "Arena.h"
 
 Wall::Wall(Rectangle r,Vector2 v):Obstacle(10),rect(r),vel(v){}
 
@@ -16,9 +17,10 @@ bool Wall::collidesWith(Vector2 centro,float radio) const {
 }
 
 bool Wall::isOffscreen() const {
-    if(vel.x>0 && rect.x>GetScreenWidth()) return true;
-    if(vel.x<0 && rect.x+rect.width<0) return true;
-    if(vel.y>0 && rect.y>GetScreenHeight()) return true;
-    if(vel.y<0 && rect.y+rect.height<0) return true;
+    Rectangle a=Arena::area();
+    if(vel.x>0 && rect.x>a.x+a.width) return true;
+    if(vel.x<0 && rect.x+rect.width<a.x) return true;
+    if(vel.y>0 && rect.y>a.y+a.height) return true;
+    if(vel.y<0 && rect.y+rect.height<a.y) return true;
     return false;
 }

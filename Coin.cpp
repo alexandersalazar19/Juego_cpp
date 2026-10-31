@@ -1,4 +1,5 @@
 #include "Coin.h"
+#include "Arena.h"
 
 Coin::Coin(float x,float y):pos{x,y},radio(12.0F){}
 
@@ -11,6 +12,8 @@ bool Coin::collidesWith(Vector2 centro,float r) const {
 }
 
 void Coin::respawn(){
-    pos.x=(float)GetRandomValue(20,GetScreenWidth()-20);
-    pos.y=(float)GetRandomValue(20,GetScreenHeight()-20);
+    const Rectangle a=Arena::area();
+    const int margen=20;
+    pos.x=(float)GetRandomValue((int)a.x+margen,(int)(a.x+a.width)-margen);
+    pos.y=(float)GetRandomValue((int)a.y+margen,(int)(a.y+a.height)-margen);
 }

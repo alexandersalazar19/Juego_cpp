@@ -1,5 +1,6 @@
 #include <cmath>
 #include "DiagonalWall.h"
+#include "Arena.h"
 using namespace std;
 
 DiagonalWall::DiagonalWall(Vector2 c,Vector2 t,float a,Vector2 v):Obstacle(20),centro(c),tam(t),angulo(a),vel(v),radioEnvolvente(0.5F*sqrt(t.x*t.x + t.y*t.y)){}
@@ -26,10 +27,11 @@ bool DiagonalWall::collidesWith(Vector2 cj,float radio) const {
 }
 
 bool DiagonalWall::isOffscreen() const {
+    Rectangle a=Arena::area();
     float R=radioEnvolvente;
-    if(vel.x>0 && centro.x-R>GetScreenWidth()) return true;
-    if(vel.x<0 && centro.x+R<0) return true;
-    if(vel.y>0 && centro.y-R>GetScreenHeight()) return true;
-    if(vel.y<0 && centro.y+R<0) return true;
+    if(vel.x>0 && centro.x-R>a.x+a.width) return true;
+    if(vel.x<0 && centro.x+R<a.x) return true;
+    if(vel.y>0 && centro.y-R>a.y+a.height) return true;
+    if(vel.y<0 && centro.y+R<a.y) return true;
     return false;
 }

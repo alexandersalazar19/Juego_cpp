@@ -1,7 +1,10 @@
-#include "Player.h"
 #include <cmath>
+#include <algorithm>
+#include "Player.h"
+#include "Arena.h"
+using namespace std;
 
-Player::Player(float x,float y):pos{x,y},radio(10.0F),velocidad(220.0F){}
+Player::Player(float x,float y):pos{x,y},radio(14.0F),velocidad(340.0F){}
 
 void Player::update(float dt){
     Vector2 dir={0.0F,0.0F};
@@ -21,10 +24,9 @@ void Player::update(float dt){
     pos.y+=dir.y*velocidad*dt;
 
     //Limites de la ventana
-    if(pos.x<radio) pos.x=radio;
-    if(pos.y<radio) pos.y=radio;
-    if(pos.x>GetScreenWidth()-radio) pos.x=GetScreenWidth()-radio;
-    if(pos.y>GetScreenHeight()-radio) pos.y=GetScreenHeight()-radio;
+    Rectangle a=Arena::area();
+    pos.x=clamp(pos.x,a.x+radio,a.x+a.width-radio);
+    pos.y=clamp(pos.y,a.y+radio,a.y+a.height-radio);
 }
 
 void Player::draw() const {
