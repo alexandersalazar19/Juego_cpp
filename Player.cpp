@@ -1,7 +1,7 @@
 #include "Player.h"
 #include <cmath>
 
-Player::Player(float x,float y):pos{x,y},radio(20.0F),velocidad(300.0F){}
+Player::Player(float x,float y):pos{x,y},radio(10.0F),velocidad(220.0F){}
 
 void Player::update(float dt){
     Vector2 dir={0.0F,0.0F};
