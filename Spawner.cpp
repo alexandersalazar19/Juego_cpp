@@ -1,6 +1,9 @@
+#include <cmath>
 #include "Spawner.h"
 #include "Wall.h"
 #include "CircleObstacle.h"
+#include "DiagonalWall.h"
+using namespace std;
 
 namespace{
     const float GROSOR=24.0F;
@@ -30,7 +33,7 @@ namespace{
         float largoLado=vertical ? H : W;
 
         float inicioHueco=(float)GetRandomValue(40,(int)(largoLado-HUECO-40));
-        float finHueco=(float)inicioHueco+HUECO;
+        float finHueco=inicioHueco+HUECO;
 
         Rectangle r1,r2;
         Vector2 v;
@@ -48,6 +51,32 @@ namespace{
 
         out.push_back(make_unique<Wall>(r1,v));
         out.push_back(make_unique<Wall>(r2,v));
+    }
+
+    void paredDiagonal(ListaObstaculos& out,int lado,float vel){
+        const float W=(float)GetScreenWidth();
+        const float H=(float)GetScreenHeight();
+        const Vector2 tam={150.0F,GROSOR};
+        const float R=0.5F*sqrt(tam.x*tam.x + tam.y*tam.y);
+
+        float x=(float)GetRandomValue(0,(int)W);
+        float y=(float)GetRandomValue(0,(int)H);
+
+        //apunta al centro de la pantalla para que no se salga de inmediato
+        Vector2 pos,dir;
+        switch(lado){
+            case 0: pos={-R,y}; dir={1,(y<H/2) ? 1.0F : -1.0F}; break;
+            case 1: pos={W+R,y}; dir={-1,(y<H/2) ? 1.0F : -1.0F}; break;
+            case 2: pos={x,-R}; dir={(x<W/2) ? 1.0F : -1.0F,1}; break;
+            default: pos={x,H+R}; dir={(x<W/2) ? 1.0F : -1.0F,-1}; break;
+        }
+
+        Vector2 v={dir.x*vel*0.7071F,dir.y*vel*0.7071F};
+
+        float anguloMov=atan2(v.y,v.x)*RAD2DEG;
+        float angulo=anguloMov+90.0F+(float)GetRandomValue(-30,30);
+
+        out.push_back(make_unique<DiagonalWall>(pos,tam,angulo,v));
     }
 
     void circuloOnda(ListaObstaculos& out,int lado,float vel){
@@ -73,12 +102,13 @@ namespace{
 
 void spawnObstaculos(ListaObstaculos& out,float velocidad){
     int lado=GetRandomValue(0,3); //0=izq, 1=der, 2=arriba, 3=abajo
-    switch(GetRandomValue(0,5)){
+    switch(GetRandomValue(0,6)){
         case 0:
         case 1:
         case 2:
             paredSimple(out,lado,velocidad); break;
         case 3: paredDoble(out,lado,velocidad); break;
+        case 4: paredDiagonal(out,lado,velocidad); break;
         default: circuloOnda(out,lado,velocidad); break;
     }
 }
