@@ -1,5 +1,5 @@
-#include "Coin.h"
-#include "Arena.h"
+#include "entities/Coin.h"
+#include "game/Arena.h"
 
 Coin::Coin(float x,float y):pos{x,y},radio(12.0F){}
 

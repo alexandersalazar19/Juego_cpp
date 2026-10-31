@@ -1,6 +1,6 @@
 #include <cmath>
-#include "CircleObstacle.h"
-#include "Arena.h"
+#include "obstacles/CircleObstacle.h"
+#include "game/Arena.h"
 using namespace std;
 
 CircleObstacle::CircleObstacle(Vector2 p,float r,Vector2 v,float amp,float frec):Obstacle(15),base(p),pos(p),radio(r),vel(v),perp{0.0F,0.0F},amplitud(amp),frecuencia(frec),tiempo(0.0F){

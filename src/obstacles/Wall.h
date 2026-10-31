@@ -1,5 +1,5 @@
 #pragma once
-#include "Obstacle.h"
+#include "obstacles/Obstacle.h"
 
 class Wall:public Obstacle{
 public:

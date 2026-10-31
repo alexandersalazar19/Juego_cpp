@@ -1,7 +1,7 @@
 #include "raylib.h"
-#include "Hud.h"
-#include "Arena.h"
-#include "Difficulty.h"
+#include "ui/Hud.h"
+#include "game/Arena.h"
+#include "game/Difficulty.h"
 
 void dibujarMenu(){
     const int W=GetScreenWidth();

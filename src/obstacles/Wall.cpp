@@ -1,5 +1,5 @@
-#include "Wall.h"
-#include "Arena.h"
+#include "obstacles/Wall.h"
+#include "game/Arena.h"
 
 Wall::Wall(Rectangle r,Vector2 v):Obstacle(10),rect(r),vel(v){}
 

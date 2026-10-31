@@ -1,9 +1,9 @@
 #include <cmath>
-#include "Spawner.h"
-#include "Wall.h"
-#include "CircleObstacle.h"
-#include "DiagonalWall.h"
-#include "Arena.h"
+#include "game/Spawner.h"
+#include "obstacles/Wall.h"
+#include "obstacles/CircleObstacle.h"
+#include "obstacles/DiagonalWall.h"
+#include "game/Arena.h"
 using namespace std;
 
 namespace{

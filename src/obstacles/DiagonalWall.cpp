@@ -1,6 +1,6 @@
 #include <cmath>
-#include "DiagonalWall.h"
-#include "Arena.h"
+#include "obstacles/DiagonalWall.h"
+#include "game/Arena.h"
 using namespace std;
 
 DiagonalWall::DiagonalWall(Vector2 c,Vector2 t,float a,Vector2 v):Obstacle(20),centro(c),tam(t),angulo(a),vel(v),radioEnvolvente(0.5F*sqrt(t.x*t.x + t.y*t.y)){}

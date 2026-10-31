@@ -1,12 +1,12 @@
 #include <memory>
 #include <vector>
 #include "raylib.h"
-#include "Player.h"
-#include "Coin.h"
-#include "Spawner.h"
-#include "Arena.h"
-#include "Hud.h"
-#include "Difficulty.h"
+#include "entities/Player.h"
+#include "entities/Coin.h"
+#include "game/Spawner.h"
+#include "game/Arena.h"
+#include "ui/Hud.h"
+#include "game/Difficulty.h"
 using namespace std;
 
 enum class Estado{Menu,Jugando,GameOver};

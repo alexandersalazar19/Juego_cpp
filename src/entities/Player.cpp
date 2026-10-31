@@ -1,7 +1,7 @@
 #include <cmath>
 #include <algorithm>
-#include "Player.h"
-#include "Arena.h"
+#include "entities/Player.h"
+#include "game/Arena.h"
 using namespace std;
 
 Player::Player(float x,float y):pos{x,y},radio(14.0F),velocidad(340.0F){}
