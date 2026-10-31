@@ -1,5 +1,5 @@
 CXX=g++
-CXXFLAGS=-Wall -Wextra
+CXXFLAGS=-Wall -Wextra -MMD -MP
 LDLIBS=-lraylib -lGL -lm -lpthread -ldl -lrt -lX11
 SRC=$(wildcard *.cpp)
 OBJ=$(SRC:.cpp=.o)
@@ -14,7 +14,7 @@ run: juego
 	./juego
 
 clean:
-	rm -f $(OBJ) juego
+	rm -f $(OBJ) *.d juego
 	clear
 
 .PHONY: run clean
