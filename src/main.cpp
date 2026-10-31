@@ -74,13 +74,14 @@ int main(){
 
                 for(auto it=obstaculos.begin();it!=obstaculos.end();){
                     (*it)->update(dt);
-                    if(!jugador.esInvulnerable() && (*it)->collidesWith(jugador.getPos(),jugador.getRadio())) estado=Estado::GameOver;
+                    if((*it)->collidesWith(jugador.getPos(),jugador.getRadio())) jugador.recibirGolpe();
 
                     if((*it)->isOffscreen()){
                         puntos+=puntosPor((*it)->getPoints(),cfg,nivel);
                         it=obstaculos.erase(it);
                     }else it++;
                 }
+                if(jugador.estaMuerto()) estado=Estado::GameOver;
                 break;
 
             case Estado::GameOver:
@@ -103,6 +104,7 @@ int main(){
     
                 dibujarHud(puntos,cfg.nombre,nivel,tiempoJugado);
                 dibujarCargas(jugador);
+                dibujarVidas(jugador);
     
                 if(estado==Estado::GameOver){
                     Vector2 m=Arena::centro();

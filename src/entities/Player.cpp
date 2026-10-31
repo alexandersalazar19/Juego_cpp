@@ -9,9 +9,12 @@ namespace{
     const float TIEMPO_RECARGA=6.0F;
     const float ALCANCE_TP=0.0F;
     const float INVUL_TP=0.0F;
+    const int MAX_VIDAS=4;
+    const int VIDAS_INICIALES=3;
+    const float INVUL_GOLPE=1.5F;
 }
 
-Player::Player(float x,float y):pos{x,y},radio(14.0F),velocidad(340.0F),cargas(MAX_CARGAS),recarga(0.0F),invul(0.0F){}
+Player::Player(float x,float y):pos{x,y},radio(14.0F),velocidad(340.0F),cargas(MAX_CARGAS),recarga(0.0F),invul(0.0F),vidas(VIDAS_INICIALES){}
 
 void Player::update(float dt){
     Vector2 dir={0.0F,0.0F};
@@ -77,9 +80,27 @@ Vector2 Player::destinoTp() const {
     return m;
 }
 
+void Player::recibirGolpe(){
+    if(invul>0) return;
+    vidas--;
+    invul=INVUL_GOLPE;
+}
+
+bool Player::estaMuerto() const {
+    return vidas<=0;
+}
+
+bool Player::ganarVida(){
+    if(vidas>=MAX_VIDAS) return false;
+    vidas++;
+    return true;
+}
+
 Vector2 Player::getPos() const {return pos;}
 float Player::getRadio() const {return radio;}
 bool Player::esInvulnerable() const {return invul>0;}
 int Player::getCargas() const {return cargas;}
 int Player::getMaxCargas() const {return MAX_CARGAS;}
 float Player::getProgresoRecarga() const {return (cargas>=MAX_CARGAS) ? 1.0F : recarga/TIEMPO_RECARGA;}
+int Player::getVidas() const {return vidas;}
+int Player::getMaxVidas() const {return MAX_VIDAS;}

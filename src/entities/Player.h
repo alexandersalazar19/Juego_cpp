@@ -16,6 +16,12 @@ public:
     int getMaxCargas() const;
     float getProgresoRecarga() const;
 
+    void recibirGolpe();
+    bool estaMuerto() const;
+    bool ganarVida();
+    int getVidas() const;
+    int getMaxVidas() const;
+
 private:
     Vector2 pos;
     float radio;
@@ -24,5 +30,6 @@ private:
     int cargas;
     float recarga;
     float invul;
+    int vidas;
     Vector2 destinoTp() const;
 };

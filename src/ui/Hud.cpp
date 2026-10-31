@@ -58,3 +58,17 @@ void dibujarCargas(const Player& jugador){
         }
     }
 }
+
+void dibujarVidas(const Player& jugador){
+    const int W=GetScreenWidth();
+    const int r=12;
+    const int sep=34;
+    int n=jugador.getMaxVidas();
+    int x0=W*3/8-(n-1)*sep/2;
+    float y=Arena::HUD_ALTO/2;
+    for(int i=0;i<n;i++){
+        Vector2 c={(float)(x0+i*sep),y};
+        if(i<jugador.getVidas()) DrawCircleV(c,r,RED);
+        else DrawCircleLinesV(c,r,Fade(RED,0.5F));
+    }
+}
