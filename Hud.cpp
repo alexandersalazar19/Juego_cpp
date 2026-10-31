@@ -1,6 +1,20 @@
 #include "raylib.h"
 #include "Hud.h"
 #include "Arena.h"
+#include "Difficulty.h"
+
+void dibujarMenu(){
+    const int W=GetScreenWidth();
+    const int H=GetScreenHeight();
+
+    const char* titulo="Choose the difficulty";
+    DrawText(titulo,(W-MeasureText(titulo,48))/2,H/4,48,BLACK);
+
+    for(int i=0;i<NUM_DIFICULTADES;i++){
+        const char* linea=TextFormat("%d - %s  (x%.1F puntos)",i+1,getConfig(i).nombre,getConfig(i).multPuntos);
+        DrawText(linea,(W-MeasureText(linea,36))/2,H/3+40+i*60,36,DARKGRAY);
+    }
+}
 
 void dibujarHud(int puntos,const char* dificultad,int nivel,float tiempo){
     const int W=GetScreenWidth();

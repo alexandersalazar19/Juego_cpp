@@ -109,18 +109,27 @@ namespace{
         }
         out.push_back(make_unique<CircleObstacle>(pos,r,v,amplitud,frecuencia));
     }
+
+    int elegirTipo(const ConfigDificultad& c){
+        int total=0;
+        for(int p:c.pesos) total+=p;
+
+        int r=GetRandomValue(0,total-1);
+        for(int i=0;i<NUM_TIPOS;i++){
+            if(r<c.pesos[i]) return i;
+            r-=c.pesos[i];
+        }
+        return 0;
+    }
 }
 
-void spawnObstaculos(ListaObstaculos& out,float velocidad){
+void spawnObstaculos(ListaObstaculos& out,float velocidad,const ConfigDificultad& cfg){
     int lado=GetRandomValue(0,3); //0=izq, 1=der, 2=arriba, 3=abajo
     float vel=velocidad*aleatorio(0.8F,1.3F);
-    switch(GetRandomValue(0,6)){
-        case 0:
-        case 1:
-        case 2:
-            paredSimple(out,lado,vel); break;
-        case 3: paredDoble(out,lado,vel); break;
-        case 4: paredDiagonal(out,lado,vel); break;
+    switch(elegirTipo(cfg)){
+        case T_PARED_SIMPLE: paredSimple(out,lado,vel); break;
+        case T_PARED_DOBLE: paredDoble(out,lado,vel); break;
+        case T_PARED_DIAGONAL: paredDiagonal(out,lado,vel); break;
         default: circuloOnda(out,lado,vel); break;
     }
 }
