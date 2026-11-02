@@ -2,8 +2,8 @@
 #include "raylib.h"
 
 enum TipoPickup{
-    P_BOMBA,
     P_VIDA
+    //futuros: P_ESCUDO, P_IMAN...
 };
 
 const float TIEMPO_DESAFIO=8.0F;
@@ -15,7 +15,6 @@ public:
     void draw() const;
     bool collidesWith(Vector2 centro,float radio) const;
     bool haExpirado() const;
-    float getFraccion() const;
     TipoPickup getTipo() const;
 
 private:

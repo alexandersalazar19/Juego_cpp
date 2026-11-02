@@ -5,17 +5,15 @@
 #include "entities/Coin.h"
 #include "game/Spawner.h"
 #include "game/Arena.h"
-#include "ui/Hud.h"
 #include "game/Difficulty.h"
-#include "entities/Pickup.h"
 #include "game/Levels.h"
+#include "game/Context.h"
+#include "challenges/ChallengeManager.h"
+#include "powerups/PowerUpManager.h"
+#include "ui/Hud.h"
 using namespace std;
 
 enum class Estado{Menu,Jugando,GameOver};
-
-float variar(float t){
-    return t*(0.7F+GetRandomValue(0,60)/100.0F);
-}
 
 int main(){
     InitWindow(800,600,"Juego en C++");
@@ -31,17 +29,14 @@ int main(){
     Coin moneda(200,200);
     vector<unique_ptr<Obstacle>> obstaculos;
     ControlNiveles niveles;
+    ChallengeManager retos;
+    PowerUpManager powerups;
 
     Estado estado=Estado::Menu;
     int dificultad=0;
     int puntos=0;
     float temporizador=0.0F;
     float tiempoJugado=0.0F;
-
-    vector<Pickup> pickups;
-    float proxBomba=0.0F;
-    float proxVida=0.0F;
-    float desafio=0.0F; //segundos que quedan del reto de vida
 
     auto nuevaPartida=[&](){
         obstaculos.clear();
@@ -52,18 +47,17 @@ int main(){
         temporizador=0.0F;
         tiempoJugado=0.0F;
         estado=Estado::Jugando;
-        pickups.clear();
-        desafio=0.0F;
         niveles.reiniciar(dificultad);
         const ConfigDificultad& c0=getConfig(dificultad);
-        proxBomba=variar(c0.bombaCada);
-        proxVida=variar(c0.vidaCada);
+        retos.configurar(niveles.getMods(),c0);
+        powerups.reiniciar(c0);
     };
 
     while(!WindowShouldClose()){
         float dt=GetFrameTime();
         const ConfigDificultad& cfg=getConfig(dificultad);
         int nivel=niveles.getNivel();
+        Context ctx{jugador,cfg,nivel,puntos};
 
         switch(estado){
             case Estado::Menu:
@@ -75,7 +69,8 @@ int main(){
                 }
                 break;
 
-            case Estado::Jugando:
+            case Estado::Jugando:{
+                int vidasAntes=jugador.getVidas();
                 tiempoJugado+=dt;
                 jugador.update(dt);
 
@@ -95,7 +90,7 @@ int main(){
 
                 for(auto it=obstaculos.begin();it!=obstaculos.end();){
                     (*it)->update(dt);
-                    if((*it)->collidesWith(jugador.getPos(),jugador.getRadio()) && jugador.recibirGolpe()) desafio=0.0F;
+                    if((*it)->collidesWith(jugador.getPos(),jugador.getRadio())) jugador.recibirGolpe();
 
                     if((*it)->isOffscreen()){
                         puntos+=puntosPor((*it)->getPoints(),cfg,nivel);
@@ -103,67 +98,26 @@ int main(){
                     }else it++;
                 }
 
+                retos.update(dt,niveles.puedeSpawnear(),ctx);
+                if(jugador.getVidas()<vidasAntes) powerups.alRecibirGolpe(); //cualquier golpe cancela la vida
+                powerups.update(dt,niveles.puedeSpawnear(),ctx);
+
                 if(niveles.update(dt,!obstaculos.empty())){
                     puntos+=puntosPor(500,cfg,niveles.getNivel()-1); //bonus por el nivel que acabas de superar
                     temporizador=0.0F;
                     jugador.recargarCargas();
-                    pickups.clear();
-                    proxBomba=variar(cfg.bombaCada);
+                    retos.configurar(niveles.getMods(),cfg);
+                    powerups.alCambiarNivel();
                 }
 
-                //aparicion de pickups
-                //bombas
-                if((niveles.getMods()&MOD_BOMBA) && niveles.puedeSpawnear()){
-                    proxBomba-=dt;
-                    if(proxBomba<=0){
-                        pickups.push_back(crearPickup(P_BOMBA,jugador.getPos()));
-                        proxBomba=variar(cfg.bombaCada);
-                    }
-                }
-                //vidas
-                if(cfg.vidaCada>0 && niveles.puedeSpawnear()){
-                    proxVida-=dt;
-                    if(proxVida<=0){
-                        bool hayVida=false;
-                        for(const auto& p:pickups) if(p.getTipo()==P_VIDA) hayVida=true;
-                        if(!hayVida && desafio<=0 && jugador.getVidas()<jugador.getMaxVidas()) pickups.push_back(crearPickup(P_VIDA,jugador.getPos()));
-                        proxVida=variar(cfg.vidaCada);
-                    }
-                }
-
-                //recoger o caducar
-                for(auto it=pickups.begin();it!=pickups.end();){
-                    it->update(dt);
-                    if(it->collidesWith(jugador.getPos(),jugador.getRadio())){
-                        if(it->getTipo()==P_BOMBA) puntos+=puntosPor(150,cfg,nivel);
-                        else desafio=TIEMPO_DESAFIO;
-                        it=pickups.erase(it);
-                    }else if(it->haExpirado()){
-                        if(it->getTipo()==P_BOMBA && jugador.recibirGolpe()) desafio=0.0F;
-                        it=pickups.erase(it);
-                    }else it++;
-                }
-
-                //reto de vida
-                if(desafio>0){
-                    desafio-=dt;
-                    if(desafio<=0){
-                        desafio=0.0F;
-                        if(!jugador.ganarVida()) puntos+=puntosPor(200,cfg,nivel); //ya tenia el maximo
-                    }
-                }
                 if(jugador.estaMuerto()) estado=Estado::GameOver;
                 break;
+            }
 
             case Estado::GameOver:
                 if(IsKeyPressed(KEY_R)) nuevaPartida();
                 if(IsKeyPressed(KEY_M)) estado=Estado::Menu;
                 break;
-        }
-
-        float alerta=-1.0F; //-1=no hay bombas
-        for(const auto& p:pickups){
-            if(p.getTipo()==P_BOMBA) alerta=max(alerta,1.0F-p.getFraccion());
         }
 
         BeginDrawing();
@@ -176,16 +130,16 @@ int main(){
                     moneda.draw();
                     for(const auto& o:obstaculos) o->draw();
                     jugador.draw();
-                    for(const auto& p:pickups) p.draw();
-                    if(alerta>=0) dibujarAlertaBomba(alerta);
-                    if(desafio>0) DrawRing(jugador.getPos(),jugador.getRadio()+5,jugador.getRadio()+8,-90.0F,-90.0F+360.0F*(desafio/TIEMPO_DESAFIO),32,GREEN);
+                    retos.dibujarMundo();
+                    powerups.dibujar(jugador);
+                    retos.dibujarCapa(ctx);
                 EndScissorMode();
-    
+
                 dibujarHud(puntos,cfg.nombre,nivel,tiempoJugado);
                 dibujarCargas(jugador);
                 dibujarVidas(jugador);
                 if(niveles.getFase()==FaseNivel::Anuncio) dibujarAnuncio(nivel,nombreMods(niveles.getMods()).c_str(),niveles.getProgresoAnuncio());
-    
+
                 if(estado==Estado::GameOver){
                     Vector2 m=Arena::centro();
                     const char* t1="PERDISTE";

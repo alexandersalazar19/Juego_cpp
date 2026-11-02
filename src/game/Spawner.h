@@ -3,7 +3,7 @@
 #include <vector>
 #include "obstacles/Obstacle.h"
 #include "Difficulty.h"
-#include "entities/Pickup.h"
+#include "powerups/Pickup.h"
 using namespace std;
 using ListaObstaculos=vector<unique_ptr<Obstacle>>;
 

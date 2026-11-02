@@ -49,7 +49,7 @@ void Player::update(float dt){
     if(cargas>0 && IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(GetMousePosition(),Arena::area())){
         pos=destinoTp();
         cargas--;
-        invul=INVUL_TP;
+        invul=max(invul,INVUL_TP);
     }
 }
 

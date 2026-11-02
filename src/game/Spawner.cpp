@@ -22,8 +22,8 @@ namespace{
         const float largo=aleatorio(LARGO_MIN,LARGO_MAX);
 
 
-        float y=(float)GetRandomValue((int)a.x,(int)(a.x+a.width-largo));
-        float x=(float)GetRandomValue((int)a.y,(int)(a.y+a.height-largo));
+        float x=(float)GetRandomValue((int)a.x,(int)(a.x+a.width-largo));
+        float y=(float)GetRandomValue((int)a.y,(int)(a.y+a.height-largo));
         float der=a.x+a.width;
         float abajo=a.y+a.height;
 
