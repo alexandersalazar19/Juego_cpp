@@ -7,18 +7,19 @@ public:
 
     void update(float dt);
     void draw() const;
-
+    
+    bool esInvulnerable() const;
+    void recargarCargas();
+    
+    bool recibirGolpe();
+    bool estaMuerto() const;
+    bool ganarVida();
+    
     Vector2 getPos() const;
     float getRadio() const;
-
-    bool esInvulnerable() const;
     int getCargas() const;
     int getMaxCargas() const;
     float getProgresoRecarga() const;
-
-    void recibirGolpe();
-    bool estaMuerto() const;
-    bool ganarVida();
     int getVidas() const;
     int getMaxVidas() const;
 

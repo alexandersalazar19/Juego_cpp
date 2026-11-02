@@ -1,13 +1,15 @@
+#include <cmath>
 #include "raylib.h"
 #include "ui/Hud.h"
 #include "game/Arena.h"
 #include "game/Difficulty.h"
+using namespace std;
 
 void dibujarMenu(){
     const int W=GetScreenWidth();
     const int H=GetScreenHeight();
 
-    const char* titulo="Choose the difficulty";
+    const char* titulo="Selecciona la dificultad";
     DrawText(titulo,(W-MeasureText(titulo,48))/2,H/4,48,BLACK);
 
     for(int i=0;i<NUM_DIFICULTADES;i++){
@@ -71,4 +73,25 @@ void dibujarVidas(const Player& jugador){
         if(i<jugador.getVidas()) DrawCircleV(c,r,RED);
         else DrawCircleLinesV(c,r,Fade(RED,0.5F));
     }
+}
+
+void dibujarAnuncio(int nivel,const char* reto,float progreso){
+    Vector2 m=Arena::centro();
+    float alfa=min(1.0F,sin(PI*progreso)*2.0F); //aparece, se mantiene y se va
+    const char* t1=TextFormat("NIVEL %d",nivel);
+    DrawText(t1,(int)m.x-MeasureText(t1,80)/2,(int)m.y-70,80,Fade(BLACK,alfa));
+    DrawText(reto,(int)m.x-MeasureText(reto,36)/2,(int)m.y+20,36,Fade(DARKGRAY,alfa));
+}
+
+void dibujarAlertaBomba(float urgencia){ //urgencia: 0.0 recien puesta, 1.0 a punto de explotar
+    Rectangle a=Arena::area();
+    float pulso=0.5F+0.5F*sin((float)GetTime()*(5.0F+10.0F*urgencia));
+    float alfa=(0.18F+0.32F*urgencia)*(0.4F+0.6F*pulso);
+    Color r=Fade(RED,alfa);
+    Color t=Fade(RED,0.0F);
+    const int g=90; //grosor del resplandor
+    DrawRectangleGradientV((int)a.x,(int)a.y,(int)a.width,g,r,t); //arriba
+    DrawRectangleGradientV((int)a.x,(int)(a.y+a.height)-g,(int)a.width,g,t,r); //abajo
+    DrawRectangleGradientH((int)a.x,(int)a.y,g,(int)a.height,r,t); //izquierda
+    DrawRectangleGradientH((int)(a.x+a.width)-g,(int)a.y,g,(int)a.height,t,r); //derecha
 }

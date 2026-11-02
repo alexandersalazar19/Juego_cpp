@@ -63,6 +63,15 @@ void Player::draw() const {
     DrawCircleV(pos,radio,c);
 }
 
+bool Player::esInvulnerable() const {
+    return invul>0;
+}
+
+void Player::recargarCargas(){
+    cargas=MAX_CARGAS;
+    recarga=0.0F;
+}
+
 Vector2 Player::destinoTp() const {
     Rectangle a=Arena::area();
     Vector2 m=GetMousePosition();
@@ -80,10 +89,11 @@ Vector2 Player::destinoTp() const {
     return m;
 }
 
-void Player::recibirGolpe(){
-    if(invul>0) return;
+bool Player::recibirGolpe(){
+    if(invul>0) return false;
     vidas--;
     invul=INVUL_GOLPE;
+    return true;
 }
 
 bool Player::estaMuerto() const {
@@ -98,7 +108,6 @@ bool Player::ganarVida(){
 
 Vector2 Player::getPos() const {return pos;}
 float Player::getRadio() const {return radio;}
-bool Player::esInvulnerable() const {return invul>0;}
 int Player::getCargas() const {return cargas;}
 int Player::getMaxCargas() const {return MAX_CARGAS;}
 float Player::getProgresoRecarga() const {return (cargas>=MAX_CARGAS) ? 1.0F : recarga/TIEMPO_RECARGA;}

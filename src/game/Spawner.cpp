@@ -133,3 +133,13 @@ void spawnObstaculos(ListaObstaculos& out,float velocidad,const ConfigDificultad
         default: circuloOnda(out,lado,vel); break;
     }
 }
+
+Pickup crearPickup(TipoPickup tipo,Vector2 evitar){
+    Rectangle a=Arena::area();
+    const float m=40.0F;
+    Vector2 p;
+    do{
+        p={(float)GetRandomValue((int)(a.x+m),(int)(a.x+a.width-m)),(float)GetRandomValue((int)(a.y+m),(int)(a.y+a.height-m))};
+    }while(CheckCollisionPointCircle(p,evitar,200.0F)); //nunca encima del jugador
+    return Pickup(tipo,p);
+}
