@@ -1,0 +1,1505 @@
+]633;E;for f in Makefile $(find src -name '*.h' -o -name '*.cpp' | sort);a29701da-4a22-40c2-9a4f-162508cb0685]633;C=== Makefile ===
+CXX=g++
+CXXFLAGS=-Wall -Wextra -MMD -MP -Isrc
+LDLIBS=-lraylib -lGL -lm -lpthread -ldl -lrt -lX11
+
+SRC=$(shell find src -name '*.cpp')
+OBJ=$(SRC:src/%.cpp=build/%.o)
+DEP=$(OBJ:.o=.d)
+
+juego: $(OBJ)
+	$(CXX) $(OBJ) -o juego $(LDLIBS)
+
+build/%.o: src/%.cpp
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+run: juego
+	./juego
+
+clean:
+	rm -rf build juego
+	clear
+
+.PHONY: run clean
+
+-include $(DEP)
+=== src/challenges/BombChallenge.cpp ===
+#include <algorithm>
+#include <cmath>
+#include "challenges/BombChallenge.h"
+#include "game/Arena.h"
+#include "game/Random.h"
+#include "ui/Hud.h"
+using namespace std;
+
+namespace{
+    const float DURACION=6.0F; //segundos hasta que explota
+    const float RADIO=18.0F;
+
+    void dibujarBomba(Vector2 pos,float restante){
+        float f=restante/DURACION;
+        bool alerta=(f<0.4F && (int)(restante*10)%2==0);
+        DrawCircleV(pos,RADIO,alerta ? RED : BLACK);
+        DrawCircleLinesV(pos,RADIO,DARKGRAY);
+        DrawCircleV({pos.x-RADIO*0.35F,pos.y-RADIO*0.35F},RADIO*0.2F,Fade(WHITE,0.35F)); //brillo
+
+        Vector2 base={pos.x+RADIO*0.5F,pos.y-RADIO*0.85F}; //mecha
+        Vector2 punta={pos.x+RADIO*1.0F,pos.y-RADIO*1.5F};
+        DrawLineEx(base,punta,3.0F,BROWN);
+        float s=0.6F+0.4F*sin(restante*30.0F); //chispa que titila
+        DrawCircleV(punta,3.0F+3.0F*s,ORANGE);
+        DrawCircleV(punta,2.0F,YELLOW);
+
+        DrawRing(pos,RADIO+4,RADIO+7,-90.0F,-90.0F+360.0F*f,32,RED);
+        const char* t=TextFormat("%d",(int)ceil(restante));
+        DrawText(t,(int)pos.x-MeasureText(t,20)/2,(int)pos.y-10,20,WHITE);
+    }
+}
+
+BombChallenge::BombChallenge(const ConfigDificultad& cfg):cada(cfg.bombaCada),proxima(variar(cfg.bombaCada)){}
+
+void BombChallenge::update(float dt,bool activo,Context& ctx){
+    if(activo && cada>0){
+        proxima-=dt;
+        if(proxima<=0){
+            bombas.push_back({Arena::puntoLibre(ctx.jugador.getPos(),200.0F,40.0F),DURACION});
+            proxima=variar(cada);
+        }
+    }
+
+    for(auto it=bombas.begin();it!=bombas.end();){
+        it->restante-=dt;
+        if(CheckCollisionCircles(it->pos,RADIO,ctx.jugador.getPos(),ctx.jugador.getRadio())){
+            ctx.puntos+=puntosPor(150,ctx.cfg,ctx.nivel);
+            it=bombas.erase(it);
+        }else if(it->restante<=0){
+            ctx.jugador.recibirGolpe();
+            it=bombas.erase(it);
+        }else it++;
+    }
+}
+
+void BombChallenge::dibujarMundo() const {
+    for(const auto& b:bombas) dibujarBomba(b.pos,b.restante);
+}
+
+void BombChallenge::dibujarCapa(const Context&) const {
+    if(bombas.empty()) return;
+    float urgencia=0.0F; //la de la bomba mas cercana a explotar
+    for(const auto& b:bombas) urgencia=max(urgencia,1.0F-b.restante/DURACION);
+    dibujarAlertaBomba(urgencia);
+}
+=== src/challenges/BombChallenge.h ===
+#pragma once
+#include <vector>
+#include "challenges/Challenge.h"
+
+class BombChallenge:public Challenge{
+public:
+    BombChallenge(const ConfigDificultad& cfg);
+
+    void update(float dt,bool activo,Context& ctx) override;
+    void dibujarMundo() const override;
+    void dibujarCapa(const Context& ctx) const override;
+
+private:
+    struct Bomba{
+        Vector2 pos;
+        float restante;
+    };
+    std::vector<Bomba> bombas;
+    float cada; //segundos entre bombas
+    float proxima;
+};
+=== src/challenges/Challenge.h ===
+#pragma once
+#include "game/Context.h"
+
+class Challenge{
+public:
+    virtual ~Challenge()=default;
+
+    //activo = el nivel esta en su fase activa (puede generar cosas)
+    virtual void update(float dt,bool activo,Context& ctx)=0;
+    virtual void dibujarMundo() const {}
+    virtual void dibujarCapa(const Context&) const {}
+};
+=== src/challenges/ChallengeManager.cpp ===
+#include "challenges/ChallengeManager.h"
+#include "challenges/BombChallenge.h"
+#include "game/Levels.h"
+using namespace std;
+
+void ChallengeManager::configurar(int mods,const ConfigDificultad& cfg){
+    lista.clear();
+    if(mods&MOD_BOMBA) lista.push_back(make_unique<BombChallenge>(cfg));
+    //aqui iran MOD_TENUE, MOD_OSCURO y MOD_CALOR
+}
+
+void ChallengeManager::update(float dt,bool activo,Context& ctx){
+    for(auto& r:lista) r->update(dt,activo,ctx);
+}
+
+void ChallengeManager::dibujarMundo() const {
+    for(const auto& r:lista) r->dibujarMundo();
+}
+
+void ChallengeManager::dibujarCapa(const Context& ctx) const {
+    for(const auto& r:lista) r->dibujarCapa(ctx);
+}
+=== src/challenges/ChallengeManager.h ===
+#pragma once
+#include <memory>
+#include <vector>
+#include "challenges/Challenge.h"
+
+class ChallengeManager{
+public:
+    void configurar(int mods,const ConfigDificultad& cfg);
+    void update(float dt,bool activo,Context& ctx);
+    void dibujarMundo() const;
+    void dibujarCapa(const Context& ctx) const;
+
+private:
+    std::vector<std::unique_ptr<Challenge>> lista;
+};
+=== src/entities/Coin.cpp ===
+#include "entities/Coin.h"
+#include "game/Arena.h"
+
+Coin::Coin(float x,float y):pos{x,y},radio(12.0F){}
+
+void Coin::draw() const {
+    DrawCircleV(pos,radio,GOLD);
+}
+
+bool Coin::collidesWith(Vector2 centro,float r) const {
+    return CheckCollisionCircles(pos,radio,centro,r);
+}
+
+void Coin::respawn(){
+    const Rectangle a=Arena::area();
+    const int margen=20;
+    pos.x=(float)GetRandomValue((int)a.x+margen,(int)(a.x+a.width)-margen);
+    pos.y=(float)GetRandomValue((int)a.y+margen,(int)(a.y+a.height)-margen);
+}
+=== src/entities/Coin.h ===
+#pragma once
+#include "raylib.h"
+
+class Coin{
+public:
+    Coin(float x,float y);
+
+    void draw() const;
+    bool collidesWith(Vector2 centro,float radio) const;
+    void respawn();
+
+private:
+    Vector2 pos;
+    float radio;
+};
+=== src/entities/Player.cpp ===
+#include <cmath>
+#include <algorithm>
+#include "entities/Player.h"
+#include "game/Arena.h"
+using namespace std;
+
+namespace{
+    const int MAX_CARGAS=3;
+    const float TIEMPO_RECARGA=6.0F;
+    const float ALCANCE_TP=0.0F;
+    const float INVUL_TP=0.0F;
+    const int MAX_VIDAS=4;
+    const int VIDAS_INICIALES=3;
+    const float INVUL_GOLPE=1.5F;
+}
+
+Player::Player(float x,float y):pos{x,y},radio(14.0F),velocidad(340.0F),cargas(MAX_CARGAS),recarga(0.0F),invul(0.0F),vidas(VIDAS_INICIALES){}
+
+void Player::update(float dt){
+    Vector2 dir={0.0F,0.0F};
+    if(IsKeyDown(KEY_D)) dir.x++;
+    if(IsKeyDown(KEY_A)) dir.x--;
+    if(IsKeyDown(KEY_S)) dir.y++;
+    if(IsKeyDown(KEY_W)) dir.y--;
+
+    //Hacer que no se mueva mas rapido en diagonal
+    float largo=sqrt(dir.x*dir.x + dir.y*dir.y);
+    if(largo>0){
+        dir.x/=largo;
+        dir.y/=largo;
+    }
+
+    pos.x+=dir.x*velocidad*dt;
+    pos.y+=dir.y*velocidad*dt;
+
+    //Limites de la ventana
+    Rectangle a=Arena::area();
+    pos.x=clamp(pos.x,a.x+radio,a.x+a.width-radio);
+    pos.y=clamp(pos.y,a.y+radio,a.y+a.height-radio);
+
+    if(invul>0) invul-=dt;
+    if(cargas<MAX_CARGAS){
+        recarga+=dt;
+        if(recarga>=TIEMPO_RECARGA){
+            cargas++;
+            recarga=0.0F;
+        }
+    }
+    if(cargas>0 && IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(GetMousePosition(),Arena::area())){
+        pos=destinoTp();
+        cargas--;
+        invul=max(invul,INVUL_TP);
+    }
+}
+
+void Player::draw() const {
+    Color c=MAROON;
+    if(invul>0 && !((int)(invul*10)%2)) c=Fade(MAROON,0.35F); //parpadeo
+    if(cargas>0 && CheckCollisionPointRec(GetMousePosition(),Arena::area())){
+        if(ALCANCE_TP>0) DrawCircleLinesV(pos,ALCANCE_TP,Fade(GRAY,0.5F));
+        DrawCircleLinesV(destinoTp(),radio,Fade(MAROON,0.6F));
+    }
+    DrawCircleV(pos,radio,c);
+}
+
+bool Player::esInvulnerable() const {
+    return invul>0;
+}
+
+void Player::recargarCargas(){
+    cargas=MAX_CARGAS;
+    recarga=0.0F;
+}
+
+Vector2 Player::destinoTp() const {
+    Rectangle a=Arena::area();
+    Vector2 m=GetMousePosition();
+    if(ALCANCE_TP>0){
+        float dx=m.x-pos.x;
+        float dy=m.y-pos.y;
+        float d=std::sqrt(dx*dx+dy*dy);
+        if(d>ALCANCE_TP){
+            m.x=pos.x+dx/d*ALCANCE_TP;
+            m.y=pos.y+dy/d*ALCANCE_TP;
+        }
+    }
+    m.x=std::clamp(m.x,a.x+radio,a.x+a.width-radio);
+    m.y=std::clamp(m.y,a.y+radio,a.y+a.height-radio);
+    return m;
+}
+
+bool Player::recibirGolpe(){
+    if(invul>0) return false;
+    vidas--;
+    invul=INVUL_GOLPE;
+    return true;
+}
+
+bool Player::estaMuerto() const {
+    return vidas<=0;
+}
+
+bool Player::ganarVida(){
+    if(vidas>=MAX_VIDAS) return false;
+    vidas++;
+    return true;
+}
+
+Vector2 Player::getPos() const {return pos;}
+float Player::getRadio() const {return radio;}
+int Player::getCargas() const {return cargas;}
+int Player::getMaxCargas() const {return MAX_CARGAS;}
+float Player::getProgresoRecarga() const {return (cargas>=MAX_CARGAS) ? 1.0F : recarga/TIEMPO_RECARGA;}
+int Player::getVidas() const {return vidas;}
+int Player::getMaxVidas() const {return MAX_VIDAS;}
+=== src/entities/Player.h ===
+#pragma once
+#include "raylib.h"
+
+class Player{
+public:
+    Player(float x,float t);
+
+    void update(float dt);
+    void draw() const;
+    
+    bool esInvulnerable() const;
+    void recargarCargas();
+    
+    bool recibirGolpe();
+    bool estaMuerto() const;
+    bool ganarVida();
+    
+    Vector2 getPos() const;
+    float getRadio() const;
+    int getCargas() const;
+    int getMaxCargas() const;
+    float getProgresoRecarga() const;
+    int getVidas() const;
+    int getMaxVidas() const;
+
+private:
+    Vector2 pos;
+    float radio;
+    float velocidad;
+
+    int cargas;
+    float recarga;
+    float invul;
+    int vidas;
+    Vector2 destinoTp() const;
+};
+=== src/game/Arena.h ===
+#pragma once
+#include "raylib.h"
+
+namespace Arena{
+    constexpr float HUD_ALTO=60.0F;
+
+    //Rectangulo donde se juega
+    inline Rectangle area(){
+        return {0.0F,HUD_ALTO,(float)GetScreenWidth(),(float)GetScreenHeight()-HUD_ALTO};
+    }
+
+    inline Vector2 centro(){
+        Rectangle a=area();
+        return {a.x+a.width/2,a.y+a.height/2};
+    }
+
+    //Punto aleatorio del area, a mas de "dist" de "evitar"
+    inline Vector2 puntoLibre(Vector2 evitar,float dist,float margen){
+        Rectangle a=area();
+        Vector2 p;
+        do{
+            p={(float)GetRandomValue((int)(a.x+margen),(int)(a.x+a.width-margen)),(float)GetRandomValue((int)(a.y+margen),(int)(a.y+a.height-margen))};
+        }while(CheckCollisionPointCircle(p,evitar,dist));
+        return p;
+    }
+}
+=== src/game/Context.h ===
+#pragma once
+#include "entities/Player.h"
+#include "game/Difficulty.h"
+
+//lo que los retos y power-ups pueden tocar
+struct Context{
+    Player& jugador;
+    const ConfigDificultad& cfg;
+    int nivel;
+    int& puntos;
+};
+=== src/game/Difficulty.cpp ===
+#include <algorithm>
+#include "Difficulty.h"
+using namespace std;
+
+namespace{
+    const ConfigDificultad TABLA[NUM_DIFICULTADES]={
+        //nombre    vel     interv mult  bomba  vida   aviso pesos
+        {"Fácil",   200.0F, 1.30F, 1.0F, 14.0F, 40.0F, 1.2F, {4,1,0,2}},
+        {"Normal",  260.0F, 1.10F, 1.5F, 11.0F, 45.0F, 0.9F, {3,2,1,3}},
+        {"Difícil", 320.0F, 0.90F, 2.0F, 9.0F,  50.0F, 0.7F, {3,3,3,3}},
+        {"Extremo", 380.0F, 0.70F, 3.0F, 7.0F,  60.0F, 0.6F, {2,3,4,4}},
+    };
+}
+
+const ConfigDificultad& getConfig(int indice){
+    return TABLA[clamp(indice,0,NUM_DIFICULTADES-1)];
+}
+
+float velocidadActual(const ConfigDificultad& c,int nivel,float rampa){
+    float factor=min(1.0F+0.06F*nivel,2.5F);
+    return c.velocidadBase*factor*rampa;
+}
+
+float intervaloActual(const ConfigDificultad& c,int nivel,float rampa){
+    float factor=min(1.0F+0.04F*nivel,2.0F);
+    return max(c.intervaloBase/(factor*rampa),0.35F);
+}
+
+int puntosPor(int puntosBase,const ConfigDificultad& c,int nivel){
+    return (int)(puntosBase*c.multPuntos*(nivel+1));
+}
+
+float avisoActual(const ConfigDificultad& c,int nivel){
+    return c.avisoBase*max(1.0F-0.03F*nivel,0.75F);
+}
+=== src/game/Difficulty.h ===
+#pragma once
+
+enum TipoObstaculo{
+    T_PARED_SIMPLE,
+    T_PARED_DOBLE,
+    T_PARED_DIAGONAL,
+    T_CIRCULO,
+    NUM_TIPOS
+};
+
+struct ConfigDificultad{
+    const char* nombre;
+    float velocidadBase;
+    float intervaloBase;
+    float multPuntos;
+    float bombaCada; //segundos entre bombas (0 = nunca)
+    float vidaCada; //segundos entre power-ups de vida (0 = nunca)
+    float avisoBase; //segundos de aviso antes de que salga un obstaculo
+    int pesos[NUM_TIPOS];
+};
+
+constexpr int NUM_DIFICULTADES=4;
+
+float velocidadActual(const ConfigDificultad& c,int nivel,float rampa);
+float intervaloActual(const ConfigDificultad& c,int nivel,float rampa);
+int puntosPor(int puntosBase,const ConfigDificultad& c,int nivel);
+float avisoActual(const ConfigDificultad& c,int nivel);
+
+const ConfigDificultad& getConfig(int indice);
+=== src/game/Levels.cpp ===
+#include "game/Levels.h"
+#include "game/Difficulty.h"
+#include "raylib.h"
+using namespace std;
+
+namespace{
+    const float DURACION_ANUNCIO=2.5F;
+    const float DURACION_NIVEL=30.0F;
+    const float RAMPA_MIN=0.7F; //velocidad al empezar el nivel
+    const float RAMPA_MAX=1.3F; //velocidad al terminarlo
+    const int MAX_COMBO=2; //retos combinados en Extremo
+
+    const int GUION[]={MOD_BOMBA,MOD_TENUE,MOD_OSCURO,MOD_CALOR};
+    const char* NOMBRES[]={"Bombas","Poca Visibilidad","Oscuridad","Sobrecalentamiento"};
+    const int N_MODS=sizeof(GUION)/sizeof(GUION[0]);
+
+    const int PROHIBIDOS[]={MOD_TENUE|MOD_OSCURO};
+
+    bool prohibido(int mods){
+        for(int p:PROHIBIDOS) if((mods&p)==p) return true;
+        return false;
+    }
+
+    int modsParaNivel(int nivel,int dificultad,int previo){
+        if(nivel<=0) return MOD_NINGUNO;
+        if(nivel<=N_MODS) return GUION[nivel-1];
+        if(dificultad<NUM_DIFICULTADES-1){ //de facil a dificil: uno solo
+            int m;
+            do{
+                m=GUION[GetRandomValue(0,N_MODS-1)];
+            }while(m==previo && N_MODS>1);
+            return m;
+        }
+        //Extremo: combinacion aleatoria
+        int k=GetRandomValue(1,MAX_COMBO);
+        int mods=MOD_NINGUNO;
+        int intentos=0;
+        while(k>0 && intentos<30){
+            intentos++;
+            int m=GUION[GetRandomValue(0,N_MODS-1)];
+            if(mods&m) continue; //ya lo tenia
+            if(prohibido(mods|m)) continue;
+            mods|=m;
+            k--;
+        }
+        return mods;
+    }
+}
+
+ControlNiveles::ControlNiveles():nivel(0),dificultad(0),mods(MOD_NINGUNO),fase(FaseNivel::Anuncio),tiempoFase(0.0F){}
+
+void ControlNiveles::reiniciar(int d){
+    nivel=0;
+    dificultad=d;
+    mods=modsParaNivel(0,d,MOD_NINGUNO);
+    fase=FaseNivel::Anuncio;
+    tiempoFase=0.0F;
+}
+
+void ControlNiveles::siguienteNivel(){
+    int previo=mods;
+    nivel++;
+    mods=modsParaNivel(nivel,dificultad,previo);
+    fase=FaseNivel::Anuncio;
+    tiempoFase=0.0F;
+}
+
+bool ControlNiveles::update(float dt,bool hayObstaculos){
+    tiempoFase+=dt;
+    switch(fase){
+        case FaseNivel::Anuncio:
+            if(tiempoFase>=DURACION_ANUNCIO){
+                fase=FaseNivel::Activo;
+                tiempoFase=0.0F;
+            }
+            break;
+        case FaseNivel::Activo:
+            if(tiempoFase>=DURACION_NIVEL){
+                fase=FaseNivel::Cierre;
+                tiempoFase=0.0F;
+            }
+            break;
+        case FaseNivel::Cierre:
+            if(!hayObstaculos){
+                siguienteNivel();
+                return true;
+            }
+            break;
+    }
+    return false;
+}
+
+bool ControlNiveles::puedeSpawnear() const{
+    return fase==FaseNivel::Activo;
+}
+
+string nombreMods(int mods){
+    if(mods==MOD_NINGUNO) return "Calentamiento";
+    string s;
+    for(int i=0;i<N_MODS;i++){
+        if(mods&GUION[i]){
+            if(!s.empty()) s+=" + ";
+            s+=NOMBRES[i];
+        }
+    }
+    return s;
+}
+
+int ControlNiveles::getNivel() const {return nivel;}
+int ControlNiveles::getMods() const {return mods;}
+FaseNivel ControlNiveles::getFase() const {return fase;}
+float ControlNiveles::getProgresoAnuncio() const {return (fase==FaseNivel::Anuncio) ? tiempoFase/DURACION_ANUNCIO : 1.0F;}
+float ControlNiveles::getRampa() const{
+    if(fase==FaseNivel::Anuncio) return RAMPA_MIN;
+    if(fase==FaseNivel::Cierre) return RAMPA_MAX;
+    return RAMPA_MIN+(RAMPA_MAX-RAMPA_MIN)*(tiempoFase/DURACION_NIVEL);
+}
+=== src/game/Levels.h ===
+#pragma once
+#include <string>
+
+//cada reto es un bit: se combinan con | y se consultan con &
+enum Modificador{
+    MOD_NINGUNO=0,
+    MOD_BOMBA=1<<0,
+    MOD_TENUE=1<<1,
+    MOD_OSCURO=1<<2,
+    MOD_CALOR=1<<3
+};
+
+enum class FaseNivel{Anuncio,Activo,Cierre};
+
+class ControlNiveles{
+public:
+    ControlNiveles();
+    void reiniciar(int dificultad);
+    bool update(float dt,bool hayObstaculos); //true el frame en que se supera un nivel
+    int getNivel() const;
+    int getMods() const;
+    FaseNivel getFase() const;
+    bool puedeSpawnear() const;
+    float getRampa() const;
+    float getProgresoAnuncio() const; //0.0 a 1.0
+private:
+    int nivel;
+    int dificultad;
+    int mods;
+    FaseNivel fase;
+    float tiempoFase;
+    void siguienteNivel();
+};
+
+std::string nombreMods(int mods);
+=== src/game/Random.h ===
+#pragma once
+#include "raylib.h"
+
+//multiplica t por un factor aleatorio entre 0.7 y 1.3
+inline float variar(float t){
+    return t*(0.7F+GetRandomValue(0,60)/100.0F);
+}
+=== src/game/Spawner.cpp ===
+#include <cmath>
+#include "game/Spawner.h"
+#include "obstacles/Wall.h"
+#include "obstacles/CircleObstacle.h"
+#include "obstacles/DiagonalWall.h"
+#include "game/Arena.h"
+using namespace std;
+
+namespace{
+    const float GROSOR_MIN=20.0F,GROSOR_MAX=40.0F;
+    const float LARGO_MIN=120.0F,LARGO_MAX=360.0F;
+    const float HUECO_MIN=100.0F,HUECO_MAX=180.0F;
+    const float RADIO_MIN=15.0F,RADIO_MAX=23.0F;
+
+    float aleatorio(float min,float max){
+        return min+(max-min)*GetRandomValue(0,1000)/1000.0F;
+    }
+
+    void paredSimple(ListaObstaculos& out,int lado,float vel){
+        const Rectangle a=Arena::area();
+        const float grosor=aleatorio(GROSOR_MIN,GROSOR_MAX);
+        const float largo=aleatorio(LARGO_MIN,LARGO_MAX);
+
+
+        float x=(float)GetRandomValue((int)a.x,(int)(a.x+a.width-largo));
+        float y=(float)GetRandomValue((int)a.y,(int)(a.y+a.height-largo));
+        float der=a.x+a.width;
+        float abajo=a.y+a.height;
+
+        switch(lado){
+            case 0: out.push_back(make_unique<Wall>(Rectangle{a.x-grosor,y,grosor,largo},Vector2{vel,0})); break;
+            case 1: out.push_back(make_unique<Wall>(Rectangle{der,y,grosor,largo},Vector2{-vel,0})); break;
+            case 2: out.push_back(make_unique<Wall>(Rectangle{x,a.y-grosor,largo,grosor},Vector2{0,vel})); break;
+            default: out.push_back(make_unique<Wall>(Rectangle{x,abajo,largo,grosor},Vector2{0,-vel})); break;
+        }
+    }
+
+    void paredDoble(ListaObstaculos& out,int lado,float vel){
+        const Rectangle a=Arena::area();
+        const float grosor=aleatorio(GROSOR_MIN,GROSOR_MAX);
+        const float hueco=aleatorio(HUECO_MIN,HUECO_MAX);
+
+        bool vertical=(!lado || lado==1);
+        float largoLado=vertical ? a.height : a.width;
+
+        float inicioHueco=(float)GetRandomValue(40,(int)(largoLado-hueco-40));
+        float finHueco=inicioHueco+hueco;
+
+        Rectangle r1,r2;
+        Vector2 v;
+        if(vertical){
+            float x=(!lado) ? a.x-grosor : a.x+a.width;
+            v={(!lado) ? vel : -vel,0.0F};
+            r1={x,a.y,grosor,inicioHueco};
+            r2={x,a.y+finHueco,grosor,largoLado-finHueco};
+        }else{
+            float y=(lado==2) ? a.y-grosor : a.y+a.height;
+            v={0.0F,(lado==2) ? vel : -vel};
+            r1={a.x,y,inicioHueco,grosor};
+            r2={a.x+finHueco,y,largoLado-finHueco,grosor};
+        }
+
+        out.push_back(make_unique<Wall>(r1,v));
+        out.push_back(make_unique<Wall>(r2,v));
+    }
+
+    void paredDiagonal(ListaObstaculos& out,int lado,float vel){
+        const Rectangle a=Arena::area();
+        const Vector2 tam={aleatorio(LARGO_MIN,LARGO_MAX),aleatorio(GROSOR_MIN,GROSOR_MAX)};
+        const float R=0.5F*sqrt(tam.x*tam.x + tam.y*tam.y);
+
+        float x=(float)GetRandomValue((int)a.x,(int)(a.x+a.width));
+        float y=(float)GetRandomValue((int)a.y,(int)(a.y+a.height));
+        float midX=a.x+a.width/2;
+        float midY=a.y+a.height/2;
+
+        //apunta al centro de la pantalla para que no se salga de inmediato
+        Vector2 pos,dir;
+        switch(lado){
+            case 0: pos={a.x-R,y}; dir={1,(y<midY) ? 1.0F : -1.0F}; break;
+            case 1: pos={a.x+a.width+R,y}; dir={-1,(y<midY) ? 1.0F : -1.0F}; break;
+            case 2: pos={x,a.y-R}; dir={(x<midX) ? 1.0F : -1.0F,1}; break;
+            default: pos={x,a.y+a.height+R}; dir={(x<midX) ? 1.0F : -1.0F,-1}; break;
+        }
+
+        Vector2 v={dir.x*vel*0.7071F,dir.y*vel*0.7071F};
+
+        float anguloMov=atan2(v.y,v.x)*RAD2DEG;
+        float angulo=anguloMov+90.0F+(float)GetRandomValue(-30,30);
+
+        out.push_back(make_unique<DiagonalWall>(pos,tam,angulo,v));
+    }
+
+    void circuloOnda(ListaObstaculos& out,int lado,float vel){
+        const Rectangle a=Arena::area();
+        const float r=aleatorio(RADIO_MIN,RADIO_MAX);
+        float x=(float)GetRandomValue((int)a.x,(int)(a.x+a.width));
+        float y=(float)GetRandomValue((int)a.y,(int)(a.y+a.height));
+
+        float amplitud=(float)GetRandomValue(40,120);
+        float frecuencia=GetRandomValue(20,40)/10.0F; //entre 2.0 y 4.0 rad/s
+
+        Vector2 pos,v;
+        switch(lado){
+            case 0: pos={a.x-r,y}; v={vel,0}; break;
+            case 1: pos={a.x+a.width+r,y}; v={-vel,0}; break;
+            case 2: pos={x,a.y-r}; v={0,vel}; break;
+            default: pos={x,a.y+a.height+r}; v={0,-vel}; break;
+        }
+        out.push_back(make_unique<CircleObstacle>(pos,r,v,amplitud,frecuencia));
+    }
+
+    int elegirTipo(const ConfigDificultad& c){
+        int total=0;
+        for(int p:c.pesos) total+=p;
+
+        int r=GetRandomValue(0,total-1);
+        for(int i=0;i<NUM_TIPOS;i++){
+            if(r<c.pesos[i]) return i;
+            r-=c.pesos[i];
+        }
+        return 0;
+    }
+}
+
+void spawnObstaculos(ListaObstaculos& out,float velocidad,const ConfigDificultad& cfg){
+    int lado=GetRandomValue(0,3); //0=izq, 1=der, 2=arriba, 3=abajo
+    float vel=velocidad*aleatorio(0.8F,1.3F);
+    switch(elegirTipo(cfg)){
+        case T_PARED_SIMPLE: paredSimple(out,lado,vel); break;
+        case T_PARED_DOBLE: paredDoble(out,lado,vel); break;
+        case T_PARED_DIAGONAL: paredDiagonal(out,lado,vel); break;
+        default: circuloOnda(out,lado,vel); break;
+    }
+}
+
+Pickup crearPickup(TipoPickup tipo,Vector2 evitar){
+    Rectangle a=Arena::area();
+    const float m=40.0F;
+    Vector2 p;
+    do{
+        p={(float)GetRandomValue((int)(a.x+m),(int)(a.x+a.width-m)),(float)GetRandomValue((int)(a.y+m),(int)(a.y+a.height-m))};
+    }while(CheckCollisionPointCircle(p,evitar,200.0F)); //nunca encima del jugador
+    return Pickup(tipo,p);
+}
+=== src/game/Spawner.h ===
+#pragma once
+#include <memory>
+#include <vector>
+#include "obstacles/Obstacle.h"
+#include "Difficulty.h"
+#include "powerups/Pickup.h"
+using namespace std;
+using ListaObstaculos=vector<unique_ptr<Obstacle>>;
+
+void spawnObstaculos(ListaObstaculos& out,float velocidad,const ConfigDificultad& cfg);
+Pickup crearPickup(TipoPickup tipo,Vector2 evitar);
+=== src/game/SpawnQueue.cpp ===
+#include <algorithm>
+#include <cmath>
+#include "game/SpawnQueue.h"
+#include "game/Arena.h"
+using namespace std;
+
+void SpawnQueue::add(ListaObstaculos& nuevos,float retraso){
+    for(auto& o:nuevos) lista.push_back(Pendiente{move(o),retraso,retraso});
+    nuevos.clear();
+}
+
+void SpawnQueue::update(float dt,ListaObstaculos& activos){
+    for(auto it=lista.begin();it!=lista.end();){
+        it->restante-=dt;
+        if(it->restante<=0){
+            activos.push_back(move(it->obs));
+            it=lista.erase(it);
+        }else it++;
+    }
+}
+
+void SpawnQueue::draw() const {
+    const Rectangle a=Arena::area();
+    const float ax2=a.x+a.width;
+    const float ay2=a.y+a.height;
+    const float prof=30.0F; //grosor de la banda
+    const float tol=1.0F;
+    const float asomo=120.0F; //cuanto de la silueta se muestra dentro del area
+
+    for(const auto& p:lista){
+        Rectangle b=p.obs->getBounds();
+        float urgencia=1.0F-p.restante/p.total; //0 al empezar, 1 al salir
+        float pulso=0.5F+0.5F*sin((float)GetTime()*(8.0F+14.0F*urgencia));
+        Color col=Fade(ORANGE,0.55F+0.4F*pulso);
+        Color borde=Fade(RED,0.9F);
+
+        //tramo del borde que ocupara (recortado al area)
+        float x0=max(b.x,a.x),x1=min(b.x+b.width,ax2);
+        float y0=max(b.y,a.y),y1=min(b.y+b.height,ay2);
+
+        Rectangle r;
+        Vector2 flecha,desp;
+        float rot;
+        if(b.x+b.width<=a.x+tol){ //entra por la izquierda
+            r={a.x,y0,prof,y1-y0};
+            flecha={a.x+prof+22.0F,(y0+y1)/2};
+            rot=0.0F;
+            desp={(a.x-(b.x+b.width))+min(b.width,asomo),0.0F};
+        }else if(b.x>=ax2-tol){ //derecha
+            r={ax2-prof,y0,prof,y1-y0};
+            flecha={ax2-prof-22.0F,(y0+y1)/2};
+            rot=180.0F;
+            desp={-((b.x-ax2)+min(b.width,asomo)),0.0F};
+        }else if(b.y+b.height<=a.y+tol){ //arriba
+            r={x0,a.y,x1-x0,prof};
+            flecha={(x0+x1)/2,a.y+prof+22.0F};
+            rot=90.0F;
+            desp={0.0F,(a.y-(b.y+b.height))+min(b.height,asomo)};
+        }else{ //abajo
+            r={x0,ay2-prof,x1-x0,prof};
+            flecha={(x0+x1)/2,ay2-prof-22.0F};
+            rot=270.0F;
+            desp={0.0F,-((b.y-ay2)+min(b.height,asomo))};
+        }
+
+        p.obs->drawGhost(desp,Fade(ORANGE,0.25F+0.2F*pulso),borde); //forma real
+    }
+}
+
+bool SpawnQueue::empty() const {return lista.empty();}
+void SpawnQueue::clear(){lista.clear();}
+=== src/game/SpawnQueue.h ===
+#pragma once
+#include <memory>
+#include <vector>
+#include "game/Spawner.h"
+using namespace std;
+
+class SpawnQueue{
+public:
+    void add(ListaObstaculos& nuevos,float retraso); //mueve los obstaculos de "nuevos" a la cola
+    void update(float dt,ListaObstaculos& activos); //los que cumplieron su aviso pasan a "activos"
+    void draw() const;
+    bool empty() const;
+    void clear();
+
+private:
+    struct Pendiente{
+        unique_ptr<Obstacle> obs;
+        float restante;
+        float total;
+    };
+    vector<Pendiente> lista;
+};
+=== src/main.cpp ===
+#include <memory>
+#include <vector>
+#include "raylib.h"
+#include "entities/Player.h"
+#include "entities/Coin.h"
+#include "game/Spawner.h"
+#include "game/Arena.h"
+#include "game/Difficulty.h"
+#include "game/Levels.h"
+#include "game/Context.h"
+#include "challenges/ChallengeManager.h"
+#include "powerups/PowerUpManager.h"
+#include "ui/Hud.h"
+#include "game/SpawnQueue.h"
+using namespace std;
+
+enum class Estado{Menu,Jugando,GameOver};
+
+int main(){
+    InitWindow(800,600,"Juego en C++");
+
+    int monitor=GetCurrentMonitor();
+    SetWindowSize(GetMonitorWidth(monitor),GetMonitorHeight(monitor));
+    ToggleFullscreen();
+
+    SetTargetFPS(60);
+
+    Vector2 c=Arena::centro();
+    Player jugador(c.x,c.y);
+    Coin moneda(200,200);
+    vector<unique_ptr<Obstacle>> obstaculos;
+    ControlNiveles niveles;
+    ChallengeManager retos;
+    PowerUpManager powerups;
+    SpawnQueue cola;
+
+    Estado estado=Estado::Menu;
+    int dificultad=0;
+    int puntos=0;
+    float temporizador=0.0F;
+    float tiempoJugado=0.0F;
+
+    auto nuevaPartida=[&](){
+        obstaculos.clear();
+        cola.clear();
+        Vector2 centro=Arena::centro();
+        jugador=Player(centro.x,centro.y);
+        moneda.respawn();
+        puntos=0;
+        temporizador=0.0F;
+        tiempoJugado=0.0F;
+        estado=Estado::Jugando;
+        niveles.reiniciar(dificultad);
+        const ConfigDificultad& c0=getConfig(dificultad);
+        retos.configurar(niveles.getMods(),c0);
+        powerups.reiniciar(c0);
+    };
+
+    while(!WindowShouldClose()){
+        float dt=GetFrameTime();
+        const ConfigDificultad& cfg=getConfig(dificultad);
+        int nivel=niveles.getNivel();
+        Context ctx{jugador,cfg,nivel,puntos};
+
+        switch(estado){
+            case Estado::Menu:
+                for(int i=0;i<NUM_DIFICULTADES;i++){
+                    if(IsKeyPressed(KEY_ONE+i)){
+                        dificultad=i;
+                        nuevaPartida();
+                    }
+                }
+                break;
+
+            case Estado::Jugando:{
+                int vidasAntes=jugador.getVidas();
+                tiempoJugado+=dt;
+                jugador.update(dt);
+
+                if(moneda.collidesWith(jugador.getPos(),jugador.getRadio())){
+                    puntos+=puntosPor(50,cfg,nivel);
+                    moneda.respawn();
+                }
+
+                if(niveles.puedeSpawnear()){
+                    temporizador+=dt;
+                    float rampa=niveles.getRampa();
+                    if(temporizador>=intervaloActual(cfg,nivel,rampa)){
+                        temporizador=0.0F;
+                        ListaObstaculos nuevos;
+                        spawnObstaculos(nuevos,velocidadActual(cfg,nivel,rampa),cfg);
+                        cola.add(nuevos,avisoActual(cfg,nivel));
+                    }
+                }
+                cola.update(dt,obstaculos); //los avisados que ya les toca salir
+
+                for(auto it=obstaculos.begin();it!=obstaculos.end();){
+                    (*it)->update(dt);
+                    if((*it)->collidesWith(jugador.getPos(),jugador.getRadio())) jugador.recibirGolpe();
+
+                    if((*it)->isOffscreen()){
+                        puntos+=puntosPor((*it)->getPoints(),cfg,nivel);
+                        it=obstaculos.erase(it);
+                    }else it++;
+                }
+
+                retos.update(dt,niveles.puedeSpawnear(),ctx);
+                if(jugador.getVidas()<vidasAntes) powerups.alRecibirGolpe(); //cualquier golpe cancela la vida
+                powerups.update(dt,niveles.puedeSpawnear(),ctx);
+
+                if(niveles.update(dt,!obstaculos.empty() || !cola.empty())){
+                    puntos+=puntosPor(500,cfg,niveles.getNivel()-1); //bonus por el nivel que acabas de superar
+                    temporizador=0.0F;
+                    retos.configurar(niveles.getMods(),cfg);
+                    powerups.alCambiarNivel();
+                }
+
+                if(jugador.estaMuerto()) estado=Estado::GameOver;
+                break;
+            }
+
+            case Estado::GameOver:
+                if(IsKeyPressed(KEY_R)) nuevaPartida();
+                if(IsKeyPressed(KEY_M)) estado=Estado::Menu;
+                break;
+        }
+
+        BeginDrawing();
+            ClearBackground(RAYWHITE);
+
+            if(estado==Estado::Menu) dibujarMenu();
+            else{
+                Rectangle a=Arena::area();
+                BeginScissorMode((int)a.x,(int)a.y,(int)a.width,(int)a.height);
+                    moneda.draw();
+                    for(const auto& o:obstaculos) o->draw();
+                    jugador.draw();
+                    retos.dibujarMundo();
+                    powerups.dibujar(jugador);
+                    retos.dibujarCapa(ctx);
+                    cola.draw();
+                EndScissorMode();
+
+                dibujarHud(puntos,cfg.nombre,nivel,tiempoJugado);
+                dibujarCargas(jugador);
+                dibujarVidas(jugador);
+                if(niveles.getFase()==FaseNivel::Anuncio) dibujarAnuncio(nivel,nombreMods(niveles.getMods()).c_str(),niveles.getProgresoAnuncio());
+
+                if(estado==Estado::GameOver){
+                    Vector2 m=Arena::centro();
+                    const char* t1="PERDISTE";
+                    const char* t2="R: reiniciar  M: menú";
+                    DrawText(t1,(int)m.x-MeasureText(t1,60)/2,(int)m.y-60,60,RED);
+                    DrawText(t2,(int)m.x-MeasureText(t2,24)/2,(int)m.y+10,24,DARKGRAY);
+                }
+            }
+        EndDrawing();
+    }
+    CloseWindow();
+    return 0;
+}
+=== src/obstacles/CircleObstacle.cpp ===
+#include <cmath>
+#include "obstacles/CircleObstacle.h"
+#include "game/Arena.h"
+using namespace std;
+
+CircleObstacle::CircleObstacle(Vector2 p,float r,Vector2 v,float amp,float frec):Obstacle(15),base(p),pos(p),radio(r),vel(v),perp{0.0F,0.0F},amplitud(amp),frecuencia(frec),tiempo(0.0F){
+    float largo=sqrt(vel.x*vel.x + vel.y*vel.y);
+    if(largo>0) perp={-vel.y/largo,vel.x/largo};
+}
+
+void CircleObstacle::update(float dt){
+    tiempo+=dt;
+    base.x+=vel.x*dt;
+    base.y+=vel.y*dt;
+
+    float desvio=amplitud*sin(frecuencia*tiempo);
+    pos.x=base.x+perp.x*desvio;
+    pos.y=base.y+perp.y*desvio;
+}
+
+void CircleObstacle::draw() const {
+    DrawCircleV(pos,radio,DARKGRAY);
+}
+
+bool CircleObstacle::collidesWith(Vector2 centro,float r) const {
+    return CheckCollisionCircles(pos,radio,centro,r);
+}
+
+bool CircleObstacle::isOffscreen() const {
+    Rectangle a=Arena::area();
+    if(vel.x>0 && pos.x-radio>a.x+a.width) return true;
+    if(vel.x<0 && pos.x+radio<a.x) return true;
+    if(vel.y>0 && pos.y-radio>a.y+a.height) return true;
+    if(vel.y<0 && pos.y+radio<a.y) return true;
+    return false;
+}
+
+void CircleObstacle::drawGhost(Vector2 d,Color relleno,Color borde) const {
+    Vector2 c={pos.x+d.x,pos.y+d.y};
+    DrawCircleV(c,radio,relleno);
+    DrawRing(c,radio-2,radio,0.0F,360.0F,32,borde);
+}
+
+Rectangle CircleObstacle::getBounds() const {return {pos.x-radio,pos.y-radio,radio*2,radio*2};}
+=== src/obstacles/CircleObstacle.h ===
+#pragma once
+#include "obstacles/Obstacle.h"
+
+class CircleObstacle:public Obstacle{
+public:
+    CircleObstacle(Vector2 pos,float radio,Vector2 vel,float amplitud,float frecuencia);
+
+    void update(float dt) override;
+    void draw() const override;
+    bool collidesWith(Vector2 centro,float radio) const override;
+    bool isOffscreen() const override;
+    void drawGhost(Vector2 desplazamiento,Color relleno,Color borde) const override;
+    Rectangle getBounds() const override;
+
+private:
+    Vector2 base; //linea por la que avanza
+    Vector2 pos; //posicion real (base + ondulacion)
+    float radio;
+    Vector2 vel;
+    Vector2 perp; //direccion perpendicular a velocidad
+    float amplitud; //desviacion hacia los lados
+    float frecuencia; //cuanto ondula (rad/s)
+    float tiempo;
+};
+=== src/obstacles/DiagonalWall.cpp ===
+#include <cmath>
+#include "obstacles/DiagonalWall.h"
+#include "game/Arena.h"
+using namespace std;
+
+DiagonalWall::DiagonalWall(Vector2 c,Vector2 t,float a,Vector2 v):Obstacle(20),centro(c),tam(t),angulo(a),vel(v),radioEnvolvente(0.5F*sqrt(t.x*t.x + t.y*t.y)){}
+
+void DiagonalWall::update(float dt){
+    centro.x+=vel.x*dt;
+    centro.y+=vel.y*dt;
+}
+
+void DiagonalWall::draw() const {
+    //el rectangulo gira alrededor de un origen que se pone en su centro
+    DrawRectanglePro(Rectangle{centro.x,centro.y,tam.x,tam.y},Vector2{tam.x/2,tam.y/2},angulo,GRAY);
+}
+
+bool DiagonalWall::collidesWith(Vector2 cj,float radio) const {
+    float rad=-angulo*DEG2RAD;
+    float dx=cj.x-centro.x;
+    float dy=cj.y-centro.y;
+
+    Vector2 local={dx*cos(rad) - dy*sin(rad),dx*sin(rad) + dy*cos(rad)};
+
+    Rectangle rectLocal={-tam.x/2,-tam.y/2,tam.x,tam.y};
+    return CheckCollisionCircleRec(local,radio,rectLocal);
+}
+
+bool DiagonalWall::isOffscreen() const {
+    Rectangle a=Arena::area();
+    float R=radioEnvolvente;
+    if(vel.x>0 && centro.x-R>a.x+a.width) return true;
+    if(vel.x<0 && centro.x+R<a.x) return true;
+    if(vel.y>0 && centro.y-R>a.y+a.height) return true;
+    if(vel.y<0 && centro.y+R<a.y) return true;
+    return false;
+}
+
+void DiagonalWall::drawGhost(Vector2 d,Color relleno,Color borde) const {
+    Vector2 c={centro.x+d.x,centro.y+d.y};
+    DrawRectanglePro(Rectangle{c.x,c.y,tam.x,tam.y},Vector2{tam.x/2,tam.y/2},angulo,relleno);
+
+    float rad=angulo*DEG2RAD;
+    float cs=cos(rad);
+    float sn=sin(rad);
+    const float sx[4]={-1,1,1,-1};
+    const float sy[4]={-1,-1,1,1};
+    Vector2 p[4];
+    for(int i=0;i<4;i++){
+        float lx=sx[i]*tam.x/2;
+        float ly=sy[i]*tam.y/2;
+        p[i]={c.x+lx*cs-ly*sn,c.y+lx*sn+ly*cs};
+    }
+    for(int i=0;i<4;i++) DrawLineEx(p[i],p[(i+1)%4],2.0F,borde);
+}
+Rectangle DiagonalWall::getBounds() const {
+    float rad=angulo*DEG2RAD;
+    float c=fabs(cos(rad));
+    float s=fabs(sin(rad));
+    float hx=tam.x/2*c+tam.y/2*s;
+    float hy=tam.x/2*s+tam.y/2*c;
+    return {centro.x-hx,centro.y-hy,hx*2,hy*2};
+}
+=== src/obstacles/DiagonalWall.h ===
+#pragma once
+#include "obstacles/Obstacle.h"
+
+class DiagonalWall:public Obstacle{
+public:
+    DiagonalWall(Vector2 centro,Vector2 tam,float angulo,Vector2 vel);
+
+    void update(float dt) override;
+    void draw() const override;
+    bool collidesWith(Vector2 centroJugador,float radio) const override;
+    bool isOffscreen() const override;
+    void drawGhost(Vector2 desplazamiento,Color relleno,Color borde) const override;
+    Rectangle getBounds() const override;
+
+private:
+    Vector2 centro;
+    Vector2 tam; //ancho y alto
+    float angulo; //grados
+    Vector2 vel;
+    float radioEnvolvente; //circulo que contiene todo el muro
+};
+=== src/obstacles/Obstacle.h ===
+#pragma once
+#include "raylib.h"
+
+class Obstacle{
+public:
+    virtual ~Obstacle()=default;
+
+    virtual void update(float dt)=0;
+    virtual void draw() const=0;
+    virtual bool collidesWith(Vector2 centro,float radio) const=0;
+    virtual bool isOffscreen() const=0;
+    virtual Rectangle getBounds() const=0;
+    virtual void drawGhost(Vector2 desplazamiento,Color relleno,Color borde) const=0; //silueta para el aviso
+
+    int getPoints() const {return points;}
+
+protected:
+    explicit Obstacle(int pts):points(pts){}
+    int points;
+};
+=== src/obstacles/Wall.cpp ===
+#include "obstacles/Wall.h"
+#include "game/Arena.h"
+
+Wall::Wall(Rectangle r,Vector2 v):Obstacle(10),rect(r),vel(v){}
+
+void Wall::update(float dt){
+    rect.x+=vel.x*dt;
+    rect.y+=vel.y*dt;
+}
+
+void Wall::draw() const {
+    DrawRectangleRec(rect,GRAY);
+}
+
+bool Wall::collidesWith(Vector2 centro,float radio) const {
+    return CheckCollisionCircleRec(centro,radio,rect);
+}
+
+bool Wall::isOffscreen() const {
+    Rectangle a=Arena::area();
+    if(vel.x>0 && rect.x>a.x+a.width) return true;
+    if(vel.x<0 && rect.x+rect.width<a.x) return true;
+    if(vel.y>0 && rect.y>a.y+a.height) return true;
+    if(vel.y<0 && rect.y+rect.height<a.y) return true;
+    return false;
+}
+
+void Wall::drawGhost(Vector2 d,Color relleno,Color borde) const {
+    Rectangle r={rect.x+d.x,rect.y+d.y,rect.width,rect.height};
+    DrawRectangleRec(r,relleno);
+    DrawRectangleLinesEx(r,2.0F,borde);
+}
+
+Rectangle Wall::getBounds() const {return rect;}
+=== src/obstacles/Wall.h ===
+#pragma once
+#include "obstacles/Obstacle.h"
+
+class Wall:public Obstacle{
+public:
+    Wall(Rectangle rect,Vector2 vel);
+
+    void update(float dt) override;
+    void draw() const override;
+    bool collidesWith(Vector2 centro,float radio) const override;
+    bool isOffscreen() const override;
+    void drawGhost(Vector2 desplazamiento,Color relleno,Color borde) const override;
+    Rectangle getBounds() const override;
+
+private:
+    Rectangle rect;
+    Vector2 vel;
+};
+=== src/powerups/Pickup.cpp ===
+#include "powerups/Pickup.h"
+
+Pickup::Pickup(TipoPickup t,Vector2 p):tipo(t),pos(p),radio(14.0F),duracion(12.0F),restante(duracion){}
+
+void Pickup::update(float dt){
+    restante-=dt;
+}
+
+void Pickup::draw() const {
+    float f=restante/duracion;
+    Color c=GREEN;
+    if(f<0.3F && (int)(restante*8)%2==0) c=Fade(c,0.3F);
+    DrawCircleV(pos,radio,c);
+    DrawRing(pos,radio+4,radio+7,-90.0F,-90.0F+360.0F*f,32,DARKGREEN);
+    DrawRectangle((int)pos.x-2,(int)pos.y-8,4,16,WHITE); //cruz
+    DrawRectangle((int)pos.x-8,(int)pos.y-2,16,4,WHITE);
+}
+
+bool Pickup::collidesWith(Vector2 centro,float r) const {
+    return CheckCollisionCircles(pos,radio,centro,r);
+}
+
+bool Pickup::haExpirado() const {return restante<=0;}
+TipoPickup Pickup::getTipo() const {return tipo;}
+=== src/powerups/Pickup.h ===
+#pragma once
+#include "raylib.h"
+
+enum TipoPickup{
+    P_VIDA
+    //futuros: P_ESCUDO, P_IMAN...
+};
+
+const float TIEMPO_DESAFIO=8.0F;
+
+class Pickup{
+public:
+    Pickup(TipoPickup tipo,Vector2 pos);
+    void update(float dt);
+    void draw() const;
+    bool collidesWith(Vector2 centro,float radio) const;
+    bool haExpirado() const;
+    TipoPickup getTipo() const;
+
+private:
+    TipoPickup tipo;
+    Vector2 pos;
+    float radio;
+    float duracion;
+    float restante;
+};
+=== src/powerups/PowerUpManager.cpp ===
+#include "powerups/PowerUpManager.h"
+#include "game/Arena.h"
+#include "game/Random.h"
+
+void PowerUpManager::reiniciar(const ConfigDificultad& cfg){
+    pickups.clear();
+    desafio=0.0F;
+    proxVida=variar(cfg.vidaCada);
+}
+
+void PowerUpManager::alCambiarNivel(){
+    pickups.clear();
+}
+
+void PowerUpManager::alRecibirGolpe(){
+    desafio=0.0F;
+}
+
+void PowerUpManager::update(float dt,bool activo,Context& ctx){
+    //aparicion
+    if(activo && ctx.cfg.vidaCada>0){
+        proxVida-=dt;
+        if(proxVida<=0){
+            bool hayVida=false;
+            for(const auto& p:pickups) if(p.getTipo()==P_VIDA) hayVida=true;
+            if(!hayVida && desafio<=0 && ctx.jugador.getVidas()<ctx.jugador.getMaxVidas())
+                pickups.push_back(Pickup(P_VIDA,Arena::puntoLibre(ctx.jugador.getPos(),200.0F,40.0F)));
+            proxVida=variar(ctx.cfg.vidaCada);
+        }
+    }
+
+    //recoger o caducar
+    for(auto it=pickups.begin();it!=pickups.end();){
+        it->update(dt);
+        if(it->collidesWith(ctx.jugador.getPos(),ctx.jugador.getRadio())){
+            switch(it->getTipo()){
+                case P_VIDA: desafio=TIEMPO_DESAFIO; break;
+            }
+            it=pickups.erase(it);
+        }else if(it->haExpirado()) it=pickups.erase(it);
+        else it++;
+    }
+
+    //vida
+    if(desafio>0){
+        desafio-=dt;
+        if(desafio<=0){
+            desafio=0.0F;
+            if(!ctx.jugador.ganarVida()) ctx.puntos+=puntosPor(200,ctx.cfg,ctx.nivel); //ya tenia el maximo
+        }
+    }
+}
+
+void PowerUpManager::dibujar(const Player& jugador) const {
+    for(const auto& p:pickups) p.draw();
+    if(desafio>0) DrawRing(jugador.getPos(),jugador.getRadio()+5,jugador.getRadio()+8,-90.0F,-90.0F+360.0F*(desafio/TIEMPO_DESAFIO),32,GREEN);
+}
+=== src/powerups/PowerUpManager.h ===
+#pragma once
+#include <vector>
+#include "powerups/Pickup.h"
+#include "game/Context.h"
+
+class PowerUpManager{
+public:
+    void reiniciar(const ConfigDificultad& cfg);
+    void alCambiarNivel();
+    void alRecibirGolpe(); //cancela la vida
+    void update(float dt,bool activo,Context& ctx);
+    void dibujar(const Player& jugador) const;
+
+private:
+    std::vector<Pickup> pickups;
+    float proxVida=0.0F;
+    float desafio=0.0F; //segundos que quedan para obtener vida (0=inactivo)
+};
+=== src/ui/Hud.cpp ===
+#include <cmath>
+#include "raylib.h"
+#include "ui/Hud.h"
+#include "game/Arena.h"
+#include "game/Difficulty.h"
+using namespace std;
+
+void dibujarMenu(){
+    const int W=GetScreenWidth();
+    const int H=GetScreenHeight();
+
+    const char* titulo="Selecciona la dificultad";
+    DrawText(titulo,(W-MeasureText(titulo,48))/2,H/4,48,BLACK);
+
+    for(int i=0;i<NUM_DIFICULTADES;i++){
+        const char* linea=TextFormat("%d - %s  (x%.1F puntos)",i+1,getConfig(i).nombre,getConfig(i).multPuntos);
+        DrawText(linea,(W-MeasureText(linea,36))/2,H/3+40+i*60,36,DARKGRAY);
+    }
+}
+
+void dibujarHud(int puntos,const char* dificultad,int nivel,float tiempo){
+    const int W=GetScreenWidth();
+    const int alto=(int)Arena::HUD_ALTO;
+    const int tam=28;
+    const int y=(alto-tam)/2;
+    const int margen=20;
+
+    DrawRectangle(0,0,W,alto,BLACK);
+
+    //Puntaje
+    DrawText(TextFormat("Puntaje: %d",puntos),margen,y,tam,WHITE);
+
+    //Tiempo
+    int min=(int)tiempo/60;
+    int seg=(int)tiempo%60;
+    const char* textTiempo=TextFormat("%02d:%02d",min,seg);
+    DrawText(textTiempo,W/4-MeasureText(textTiempo,tam)/2,y,tam,WHITE);
+
+    //Dificultad
+    DrawText(dificultad,(W-MeasureText(dificultad,tam))/2,y,tam,WHITE);
+
+    //Nivel
+    const char* textNivel=TextFormat("Nivel %d",nivel);
+    DrawText(textNivel,W-MeasureText(textNivel,tam)-margen,y,tam,WHITE);
+}
+
+void dibujarCargas(const Player& jugador){
+    const int W=GetScreenWidth();
+    const int r=14;
+    const int sep=44;
+    int n=jugador.getMaxCargas();
+    int x0=W*3/4-(n-1)*sep/2;
+    float y=Arena::HUD_ALTO/2;
+    for(int i=0;i<n;i++){
+        Vector2 c={(float)(x0+i*sep),y};
+        if(i<jugador.getCargas()) DrawCircleV(c,r,SKYBLUE);
+        else{
+            DrawCircleLinesV(c,r,SKYBLUE);
+            if(i==jugador.getCargas()) DrawCircleSector(c,r,-90.0F,-90.0F+360.0F*jugador.getProgresoRecarga(),32,Fade(SKYBLUE,0.5F));
+        }
+    }
+}
+
+void dibujarVidas(const Player& jugador){
+    const int W=GetScreenWidth();
+    const int r=12;
+    const int sep=34;
+    int n=jugador.getMaxVidas();
+    int x0=W*3/8-(n-1)*sep/2;
+    float y=Arena::HUD_ALTO/2;
+    for(int i=0;i<n;i++){
+        Vector2 c={(float)(x0+i*sep),y};
+        if(i<jugador.getVidas()) DrawCircleV(c,r,RED);
+        else DrawCircleLinesV(c,r,Fade(RED,0.5F));
+    }
+}
+
+void dibujarAnuncio(int nivel,const char* reto,float progreso){
+    Vector2 m=Arena::centro();
+    float alfa=min(1.0F,sin(PI*progreso)*2.0F); //aparece, se mantiene y se va
+    const char* t1=TextFormat("NIVEL %d",nivel);
+    DrawText(t1,(int)m.x-MeasureText(t1,80)/2,(int)m.y-70,80,Fade(BLACK,alfa));
+    DrawText(reto,(int)m.x-MeasureText(reto,36)/2,(int)m.y+20,36,Fade(DARKGRAY,alfa));
+}
+
+void dibujarAlertaBomba(float urgencia){ //urgencia: 0.0 recien puesta, 1.0 a punto de explotar
+    Rectangle a=Arena::area();
+    float pulso=0.5F+0.5F*sin((float)GetTime()*(5.0F+10.0F*urgencia));
+    float alfa=(0.18F+0.32F*urgencia)*(0.4F+0.6F*pulso);
+    Color r=Fade(RED,alfa);
+    Color t=Fade(RED,0.0F);
+    const int g=90; //grosor del resplandor
+    DrawRectangleGradientV((int)a.x,(int)a.y,(int)a.width,g,r,t); //arriba
+    DrawRectangleGradientV((int)a.x,(int)(a.y+a.height)-g,(int)a.width,g,t,r); //abajo
+    DrawRectangleGradientH((int)a.x,(int)a.y,g,(int)a.height,r,t); //izquierda
+    DrawRectangleGradientH((int)(a.x+a.width)-g,(int)a.y,g,(int)a.height,t,r); //derecha
+}
+=== src/ui/Hud.h ===
+#pragma once
+#include "entities/Player.h"
+
+void dibujarMenu();
+void dibujarHud(int puntos,const char* dificultad,int nivel,float tiempo);
+void dibujarCargas(const Player& jugador);
+void dibujarVidas(const Player& jugador);
+void dibujarAnuncio(int nivel,const char* reto,float progreso);
+void dibujarAlertaBomba(float urgencia);

@@ -1,5 +1,6 @@
 #include <memory>
 #include <vector>
+#include <algorithm>
 #include "raylib.h"
 #include "entities/Player.h"
 #include "entities/Coin.h"
@@ -12,9 +13,10 @@
 #include "powerups/PowerUpManager.h"
 #include "ui/Hud.h"
 #include "game/SpawnQueue.h"
+#include "effects/Effects.h"
 using namespace std;
 
-enum class Estado{Menu,Jugando,GameOver};
+enum class Estado{Menu,Jugando,Muriendo,GameOver};
 
 int main(){
     InitWindow(800,600,"Juego en C++");
@@ -33,12 +35,14 @@ int main(){
     ChallengeManager retos;
     PowerUpManager powerups;
     SpawnQueue cola;
+    Effects efectos;
 
     Estado estado=Estado::Menu;
     int dificultad=0;
     int puntos=0;
     float temporizador=0.0F;
     float tiempoJugado=0.0F;
+    float tMensaje=0.0F;
 
     auto nuevaPartida=[&](){
         obstaculos.clear();
@@ -58,6 +62,7 @@ int main(){
 
     while(!WindowShouldClose()){
         float dt=GetFrameTime();
+        if(estado!=Estado::Menu) efectos.update(dt);
         const ConfigDificultad& cfg=getConfig(dificultad);
         int nivel=niveles.getNivel();
         Context ctx{jugador,cfg,nivel,puntos};
@@ -92,7 +97,7 @@ int main(){
                         cola.add(nuevos,avisoActual(cfg,nivel));
                     }
                 }
-                cola.update(dt,obstaculos); //los avisados que ya les toca salir
+                cola.update(dt,obstaculos);
 
                 for(auto it=obstaculos.begin();it!=obstaculos.end();){
                     (*it)->update(dt);
@@ -105,7 +110,10 @@ int main(){
                 }
 
                 retos.update(dt,niveles.puedeSpawnear(),ctx);
-                if(jugador.getVidas()<vidasAntes) powerups.alRecibirGolpe(); //cualquier golpe cancela la vida
+                if(jugador.getVidas()<vidasAntes){
+                    powerups.alRecibirGolpe();
+                    efectos.golpe(jugador.getPos(),jugador.getRadio());
+                }
                 powerups.update(dt,niveles.puedeSpawnear(),ctx);
 
                 if(niveles.update(dt,!obstaculos.empty() || !cola.empty())){
@@ -115,11 +123,26 @@ int main(){
                     powerups.alCambiarNivel();
                 }
 
-                if(jugador.estaMuerto()) estado=Estado::GameOver;
+                if(jugador.estaMuerto()){
+                    estado=Estado::Muriendo;
+                    efectos.iniciarMuerte(jugador.getPos(),jugador.getRadio());
+                }
+                break;
+            }
+
+            case Estado::Muriendo:{
+                float dtM=dt*efectos.getEscalaTiempo(); //el mundo sigue, pero en camara lenta
+                cola.update(dtM,obstaculos);
+                for(auto& o:obstaculos) o->update(dtM);
+                if(efectos.muerteTerminada()){
+                    estado=Estado::GameOver;
+                    tMensaje=0.0F;
+                }
                 break;
             }
 
             case Estado::GameOver:
+                tMensaje+=dt;
                 if(IsKeyPressed(KEY_R)) nuevaPartida();
                 if(IsKeyPressed(KEY_M)) estado=Estado::Menu;
                 break;
@@ -131,27 +154,37 @@ int main(){
             if(estado==Estado::Menu) dibujarMenu();
             else{
                 Rectangle a=Arena::area();
+                Camera2D cam={efectos.getTemblor(),{0.0F,0.0F},0.0F,1.0F};
                 BeginScissorMode((int)a.x,(int)a.y,(int)a.width,(int)a.height);
-                    moneda.draw();
-                    for(const auto& o:obstaculos) o->draw();
-                    jugador.draw();
-                    retos.dibujarMundo();
-                    powerups.dibujar(jugador);
-                    retos.dibujarCapa(ctx);
-                    cola.draw();
+                    BeginMode2D(cam);
+                        moneda.draw();
+                        for(const auto& o:obstaculos) o->draw();
+                        if(estado==Estado::Jugando) jugador.draw();
+                        retos.dibujarMundo();
+                        powerups.dibujar(jugador);
+                    EndMode2D();
+                    if(estado==Estado::Jugando){
+                        retos.dibujarCapa(ctx);
+                        cola.draw();
+                    }
+                    efectos.dibujarOscuridad();
+                    BeginMode2D(cam);
+                        efectos.draw();
+                    EndMode2D();
                 EndScissorMode();
 
                 dibujarHud(puntos,cfg.nombre,nivel,tiempoJugado);
                 dibujarCargas(jugador);
                 dibujarVidas(jugador);
-                if(niveles.getFase()==FaseNivel::Anuncio) dibujarAnuncio(nivel,nombreMods(niveles.getMods()).c_str(),niveles.getProgresoAnuncio());
+                if(estado==Estado::Jugando && niveles.getFase()==FaseNivel::Anuncio) dibujarAnuncio(nivel,nombreMods(niveles.getMods()).c_str(),niveles.getProgresoAnuncio());
 
                 if(estado==Estado::GameOver){
+                    float alfa=min(1.0F,tMensaje/0.6F);
                     Vector2 m=Arena::centro();
                     const char* t1="PERDISTE";
                     const char* t2="R: reiniciar  M: menú";
-                    DrawText(t1,(int)m.x-MeasureText(t1,60)/2,(int)m.y-60,60,RED);
-                    DrawText(t2,(int)m.x-MeasureText(t2,24)/2,(int)m.y+10,24,DARKGRAY);
+                    DrawText(t1,(int)m.x-MeasureText(t1,60)/2,(int)m.y-60,60,Fade(RED,alfa));
+                    DrawText(t2,(int)m.x-MeasureText(t2,24)/2,(int)m.y+10,24,Fade(RAYWHITE,alfa));
                 }
             }
         EndDrawing();

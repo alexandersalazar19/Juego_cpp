@@ -31,7 +31,6 @@ void SpawnQueue::draw() const {
         Rectangle b=p.obs->getBounds();
         float urgencia=1.0F-p.restante/p.total; //0 al empezar, 1 al salir
         float pulso=0.5F+0.5F*sin((float)GetTime()*(8.0F+14.0F*urgencia));
-        Color col=Fade(ORANGE,0.55F+0.4F*pulso);
         Color borde=Fade(RED,0.9F);
 
         //tramo del borde que ocupara (recortado al area)
@@ -40,26 +39,21 @@ void SpawnQueue::draw() const {
 
         Rectangle r;
         Vector2 flecha,desp;
-        float rot;
         if(b.x+b.width<=a.x+tol){ //entra por la izquierda
             r={a.x,y0,prof,y1-y0};
             flecha={a.x+prof+22.0F,(y0+y1)/2};
-            rot=0.0F;
             desp={(a.x-(b.x+b.width))+min(b.width,asomo),0.0F};
         }else if(b.x>=ax2-tol){ //derecha
             r={ax2-prof,y0,prof,y1-y0};
             flecha={ax2-prof-22.0F,(y0+y1)/2};
-            rot=180.0F;
             desp={-((b.x-ax2)+min(b.width,asomo)),0.0F};
         }else if(b.y+b.height<=a.y+tol){ //arriba
             r={x0,a.y,x1-x0,prof};
             flecha={(x0+x1)/2,a.y+prof+22.0F};
-            rot=90.0F;
             desp={0.0F,(a.y-(b.y+b.height))+min(b.height,asomo)};
         }else{ //abajo
             r={x0,ay2-prof,x1-x0,prof};
             flecha={(x0+x1)/2,ay2-prof-22.0F};
-            rot=270.0F;
             desp={0.0F,-((b.y-ay2)+min(b.height,asomo))};
         }
 

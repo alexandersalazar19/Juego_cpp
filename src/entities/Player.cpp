@@ -14,7 +14,7 @@ namespace{
     const float INVUL_GOLPE=1.5F;
 }
 
-Player::Player(float x,float y):pos{x,y},radio(14.0F),velocidad(340.0F),cargas(MAX_CARGAS),recarga(0.0F),invul(0.0F),vidas(VIDAS_INICIALES){}
+Player::Player(float x,float y):pos{x,y},radio(14.0F),velocidad(360.0F),cargas(MAX_CARGAS),recarga(0.0F),invul(0.0F),vidas(VIDAS_INICIALES){}
 
 void Player::update(float dt){
     Vector2 dir={0.0F,0.0F};
