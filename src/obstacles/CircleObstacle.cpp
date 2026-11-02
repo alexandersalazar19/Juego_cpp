@@ -18,8 +18,8 @@ void CircleObstacle::update(float dt){
     pos.y=base.y+perp.y*desvio;
 }
 
-void CircleObstacle::draw() const {
-    DrawCircleV(pos,radio,DARKGRAY);
+void CircleObstacle::draw(float alfa) const {
+    DrawCircleV(pos,radio,Fade(DARKGRAY,alfa));
 }
 
 bool CircleObstacle::collidesWith(Vector2 centro,float r) const {

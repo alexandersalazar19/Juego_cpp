@@ -6,7 +6,7 @@ public:
     CircleObstacle(Vector2 pos,float radio,Vector2 vel,float amplitud,float frecuencia);
 
     void update(float dt) override;
-    void draw() const override;
+    void draw(float alfa) const override;
     bool collidesWith(Vector2 centro,float radio) const override;
     bool isOffscreen() const override;
     void drawGhost(Vector2 desplazamiento,Color relleno,Color borde) const override;

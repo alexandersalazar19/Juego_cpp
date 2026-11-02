@@ -47,6 +47,7 @@ int main(){
     auto nuevaPartida=[&](){
         obstaculos.clear();
         cola.clear();
+        efectos.clear();
         Vector2 centro=Arena::centro();
         jugador=Player(centro.x,centro.y);
         moneda.respawn();
@@ -158,7 +159,7 @@ int main(){
                 BeginScissorMode((int)a.x,(int)a.y,(int)a.width,(int)a.height);
                     BeginMode2D(cam);
                         moneda.draw();
-                        for(const auto& o:obstaculos) o->draw();
+                        for(const auto& o:obstaculos) o->draw(retos.alfaObstaculo(o->distanciaA(jugador.getPos())));
                         if(estado==Estado::Jugando) jugador.draw();
                         retos.dibujarMundo();
                         powerups.dibujar(jugador);

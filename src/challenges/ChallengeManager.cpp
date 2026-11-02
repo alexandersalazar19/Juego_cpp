@@ -1,12 +1,20 @@
 #include "challenges/ChallengeManager.h"
-#include "challenges/BombChallenge.h"
 #include "game/Levels.h"
+#include "challenges/BombChallenge.h"
+#include "challenges/FaintChallenge.h"
 using namespace std;
 
 void ChallengeManager::configurar(int mods,const ConfigDificultad& cfg){
     lista.clear();
     if(mods&MOD_BOMBA) lista.push_back(make_unique<BombChallenge>(cfg));
-    //aqui iran MOD_TENUE, MOD_OSCURO y MOD_CALOR
+    if(mods&MOD_TENUE) lista.push_back(make_unique<FaintChallenge>());
+    //aqui iran MOD_OSCURO y MOD_CALOR
+}
+
+float ChallengeManager::alfaObstaculo(float distancia) const {
+    float alfa=1.0F;
+    for(const auto& r:lista) alfa*=r->alfaObstaculo(distancia);
+    return alfa;
 }
 
 void ChallengeManager::update(float dt,bool activo,Context& ctx){

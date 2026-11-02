@@ -9,6 +9,7 @@ public:
     void update(float dt,bool activo,Context& ctx);
     void dibujarMundo() const;
     void dibujarCapa(const Context& ctx) const;
+    float alfaObstaculo(float distancia) const;
 
 private:
     std::vector<std::unique_ptr<Challenge>> lista;

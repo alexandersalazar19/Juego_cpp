@@ -8,8 +8,8 @@ void Wall::update(float dt){
     rect.y+=vel.y*dt;
 }
 
-void Wall::draw() const {
-    DrawRectangleRec(rect,GRAY);
+void Wall::draw(float alfa) const {
+    DrawRectangleRec(rect,Fade(GRAY,alfa));
 }
 
 bool Wall::collidesWith(Vector2 centro,float radio) const {

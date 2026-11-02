@@ -10,9 +10,8 @@ void DiagonalWall::update(float dt){
     centro.y+=vel.y*dt;
 }
 
-void DiagonalWall::draw() const {
-    //el rectangulo gira alrededor de un origen que se pone en su centro
-    DrawRectanglePro(Rectangle{centro.x,centro.y,tam.x,tam.y},Vector2{tam.x/2,tam.y/2},angulo,GRAY);
+void DiagonalWall::draw(float alfa) const {
+    DrawRectanglePro(Rectangle{centro.x,centro.y,tam.x,tam.y},Vector2{tam.x/2,tam.y/2},angulo,Fade(GRAY,alfa));
 }
 
 bool DiagonalWall::collidesWith(Vector2 cj,float radio) const {
