@@ -35,3 +35,29 @@ bool DiagonalWall::isOffscreen() const {
     if(vel.y<0 && centro.y+R<a.y) return true;
     return false;
 }
+
+void DiagonalWall::drawGhost(Vector2 d,Color relleno,Color borde) const {
+    Vector2 c={centro.x+d.x,centro.y+d.y};
+    DrawRectanglePro(Rectangle{c.x,c.y,tam.x,tam.y},Vector2{tam.x/2,tam.y/2},angulo,relleno);
+
+    float rad=angulo*DEG2RAD;
+    float cs=cos(rad);
+    float sn=sin(rad);
+    const float sx[4]={-1,1,1,-1};
+    const float sy[4]={-1,-1,1,1};
+    Vector2 p[4];
+    for(int i=0;i<4;i++){
+        float lx=sx[i]*tam.x/2;
+        float ly=sy[i]*tam.y/2;
+        p[i]={c.x+lx*cs-ly*sn,c.y+lx*sn+ly*cs};
+    }
+    for(int i=0;i<4;i++) DrawLineEx(p[i],p[(i+1)%4],2.0F,borde);
+}
+Rectangle DiagonalWall::getBounds() const {
+    float rad=angulo*DEG2RAD;
+    float c=fabs(cos(rad));
+    float s=fabs(sin(rad));
+    float hx=tam.x/2*c+tam.y/2*s;
+    float hy=tam.x/2*s+tam.y/2*c;
+    return {centro.x-hx,centro.y-hy,hx*2,hy*2};
+}

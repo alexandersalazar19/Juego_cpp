@@ -24,3 +24,11 @@ bool Wall::isOffscreen() const {
     if(vel.y<0 && rect.y+rect.height<a.y) return true;
     return false;
 }
+
+void Wall::drawGhost(Vector2 d,Color relleno,Color borde) const {
+    Rectangle r={rect.x+d.x,rect.y+d.y,rect.width,rect.height};
+    DrawRectangleRec(r,relleno);
+    DrawRectangleLinesEx(r,2.0F,borde);
+}
+
+Rectangle Wall::getBounds() const {return rect;}

@@ -11,6 +11,7 @@
 #include "challenges/ChallengeManager.h"
 #include "powerups/PowerUpManager.h"
 #include "ui/Hud.h"
+#include "game/SpawnQueue.h"
 using namespace std;
 
 enum class Estado{Menu,Jugando,GameOver};
@@ -31,6 +32,7 @@ int main(){
     ControlNiveles niveles;
     ChallengeManager retos;
     PowerUpManager powerups;
+    SpawnQueue cola;
 
     Estado estado=Estado::Menu;
     int dificultad=0;
@@ -40,6 +42,7 @@ int main(){
 
     auto nuevaPartida=[&](){
         obstaculos.clear();
+        cola.clear();
         Vector2 centro=Arena::centro();
         jugador=Player(centro.x,centro.y);
         moneda.respawn();
@@ -84,9 +87,12 @@ int main(){
                     float rampa=niveles.getRampa();
                     if(temporizador>=intervaloActual(cfg,nivel,rampa)){
                         temporizador=0.0F;
-                        spawnObstaculos(obstaculos,velocidadActual(cfg,nivel,rampa),cfg);
+                        ListaObstaculos nuevos;
+                        spawnObstaculos(nuevos,velocidadActual(cfg,nivel,rampa),cfg);
+                        cola.add(nuevos,avisoActual(cfg,nivel));
                     }
                 }
+                cola.update(dt,obstaculos); //los avisados que ya les toca salir
 
                 for(auto it=obstaculos.begin();it!=obstaculos.end();){
                     (*it)->update(dt);
@@ -102,10 +108,9 @@ int main(){
                 if(jugador.getVidas()<vidasAntes) powerups.alRecibirGolpe(); //cualquier golpe cancela la vida
                 powerups.update(dt,niveles.puedeSpawnear(),ctx);
 
-                if(niveles.update(dt,!obstaculos.empty())){
+                if(niveles.update(dt,!obstaculos.empty() || !cola.empty())){
                     puntos+=puntosPor(500,cfg,niveles.getNivel()-1); //bonus por el nivel que acabas de superar
                     temporizador=0.0F;
-                    jugador.recargarCargas();
                     retos.configurar(niveles.getMods(),cfg);
                     powerups.alCambiarNivel();
                 }
@@ -133,6 +138,7 @@ int main(){
                     retos.dibujarMundo();
                     powerups.dibujar(jugador);
                     retos.dibujarCapa(ctx);
+                    cola.draw();
                 EndScissorMode();
 
                 dibujarHud(puntos,cfg.nombre,nivel,tiempoJugado);

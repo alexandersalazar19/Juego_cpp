@@ -9,6 +9,8 @@ public:
     void draw() const override;
     bool collidesWith(Vector2 centro,float radio) const override;
     bool isOffscreen() const override;
+    void drawGhost(Vector2 desplazamiento,Color relleno,Color borde) const override;
+    Rectangle getBounds() const override;
 
 private:
     Rectangle rect;

@@ -34,3 +34,11 @@ bool CircleObstacle::isOffscreen() const {
     if(vel.y<0 && pos.y+radio<a.y) return true;
     return false;
 }
+
+void CircleObstacle::drawGhost(Vector2 d,Color relleno,Color borde) const {
+    Vector2 c={pos.x+d.x,pos.y+d.y};
+    DrawCircleV(c,radio,relleno);
+    DrawRing(c,radio-2,radio,0.0F,360.0F,32,borde);
+}
+
+Rectangle CircleObstacle::getBounds() const {return {pos.x-radio,pos.y-radio,radio*2,radio*2};}

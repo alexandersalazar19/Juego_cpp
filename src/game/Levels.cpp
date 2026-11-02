@@ -81,7 +81,7 @@ bool ControlNiveles::update(float dt,bool hayObstaculos){
             }
             break;
         case FaseNivel::Cierre:
-            if(!hayObstaculos){ //ya no queda ninguno: siguiente nivel
+            if(!hayObstaculos){
                 siguienteNivel();
                 return true;
             }
