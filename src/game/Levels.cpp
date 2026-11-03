@@ -8,7 +8,7 @@ namespace{
     const float DURACION_NIVEL=30.0F;
     const float RAMPA_MIN=0.7F; //velocidad al empezar el nivel
     const float RAMPA_MAX=1.3F; //velocidad al terminarlo
-    const int MAX_COMBO=2; //retos combinados en Extremo
+    const int MAX_COMBO=2;
 
     const int GUION[]={MOD_BOMBA,MOD_TENUE,MOD_OSCURO,MOD_CALOR};
     const char* NOMBRES[]={"Bombas","Poca Visibilidad","Oscuridad","Sobrecalentamiento"};
@@ -21,18 +21,8 @@ namespace{
         return false;
     }
 
-    int modsParaNivel(int nivel,int dificultad,int previo){
-        if(nivel<=0) return MOD_NINGUNO;
-        if(nivel<=N_MODS) return GUION[nivel-1];
-        if(dificultad<NUM_DIFICULTADES-1){ //de facil a dificil: uno solo
-            int m;
-            do{
-                m=GUION[GetRandomValue(0,N_MODS-1)];
-            }while(m==previo && N_MODS>1);
-            return m;
-        }
-        //Extremo: combinacion aleatoria
-        int k=GetRandomValue(1,MAX_COMBO);
+    //elige k retos distintos y compatibles entre si
+    int sortear(int k){
         int mods=MOD_NINGUNO;
         int intentos=0;
         while(k>0 && intentos<30){
@@ -43,6 +33,23 @@ namespace{
             mods|=m;
             k--;
         }
+        return mods;
+    }
+
+    int modsParaNivel(int nivel,int dificultad,int previo){
+        if(nivel<=0) return MOD_NINGUNO;
+        if(nivel<=N_MODS) return GUION[nivel-1];
+
+        //niveles aleatorios: uno solo, o un combo segun la probabilidad de la dificultad
+        int p=(int)(getConfig(dificultad).probCombo*1000);
+        int k=(GetRandomValue(0,999)<p) ? MAX_COMBO : 1;
+
+        int mods;
+        int intentos=0;
+        do{
+            mods=sortear(k);
+            intentos++;
+        }while(mods==previo && intentos<10); //no repetir lo del nivel anterior
         return mods;
     }
 }

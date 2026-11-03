@@ -16,6 +16,7 @@ struct ConfigDificultad{
     float bombaCada; //segundos entre bombas (0 = nunca)
     float vidaCada; //segundos entre power-ups de vida (0 = nunca)
     float avisoBase; //segundos de aviso antes de que salga un obstaculo
+    float probCombo; //probabilidad de que un nivel aleatorio combine 2 retos
     int pesos[NUM_TIPOS];
 };
 
