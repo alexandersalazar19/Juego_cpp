@@ -161,14 +161,15 @@ int main(){
                         moneda.draw();
                         for(const auto& o:obstaculos) o->draw(retos.alfaObstaculo(o->distanciaA(jugador.getPos())));
                         if(estado==Estado::Jugando) jugador.draw();
-                        retos.dibujarMundo();
+                        retos.dibujarCapa(ctx); //oscuridad
+                        retos.dibujarMundo(); //bombas que se ven sobre la oscuridad
                         powerups.dibujar(jugador);
                     EndMode2D();
                     if(estado==Estado::Jugando){
-                        retos.dibujarCapa(ctx);
-                        cola.draw();
+                        retos.dibujarAlerta(ctx); //resplandor de la bomba
+                        cola.draw(); //avisos de los bordes
                     }
-                    efectos.dibujarOscuridad();
+                    efectos.dibujarOscuridad(); //oscuridad de la muerte
                     BeginMode2D(cam);
                         efectos.draw();
                     EndMode2D();
@@ -190,6 +191,7 @@ int main(){
             }
         EndDrawing();
     }
+    retos.limpiar();
     CloseWindow();
     return 0;
 }

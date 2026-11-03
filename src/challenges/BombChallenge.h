@@ -8,7 +8,7 @@ public:
 
     void update(float dt,bool activo,Context& ctx) override;
     void dibujarMundo() const override;
-    void dibujarCapa(const Context& ctx) const override;
+    void dibujarAlerta(const Context& ctx) const override;
 
 private:
     struct Bomba{

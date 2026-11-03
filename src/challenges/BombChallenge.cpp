@@ -57,7 +57,7 @@ void BombChallenge::dibujarMundo() const {
     for(const auto& b:bombas) dibujarBomba(b.pos,b.restante);
 }
 
-void BombChallenge::dibujarCapa(const Context&) const {
+void BombChallenge::dibujarAlerta(const Context&) const {
     if(bombas.empty()) return;
     float urgencia=0.0F; //la de la bomba mas cercana a explotar
     for(const auto& b:bombas) urgencia=max(urgencia,1.0F-b.restante/DURACION);
