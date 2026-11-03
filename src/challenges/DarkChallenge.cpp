@@ -9,8 +9,8 @@ namespace{
     const float RADIO_FINAL=300.0F;
     const float NUCLEO=0.10F;
     const float OSCURIDAD=0.92F;
-    const float DURACION_ENTRADA=4.0F;
-    const float DURACION_SALIDA=7.5F;
+    const float DURACION_ENTRADA=3.0F;
+    const float DURACION_SALIDA=7.0F;
     const float MARGEN=40.0F;
 
     float suave(float t){

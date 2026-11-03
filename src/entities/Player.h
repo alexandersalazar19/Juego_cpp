@@ -14,6 +14,7 @@ public:
     bool recibirGolpe();
     bool estaMuerto() const;
     bool ganarVida();
+    bool seMueve() const;
     
     Vector2 getPos() const;
     float getRadio() const;
@@ -31,6 +32,7 @@ private:
     int cargas;
     float recarga;
     float invul;
+    bool moviendo=false;
     int vidas;
     Vector2 destinoTp() const;
 };

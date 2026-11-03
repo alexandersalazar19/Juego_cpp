@@ -53,7 +53,7 @@ void BombChallenge::update(float dt,bool activo,Context& ctx){
     }
 }
 
-void BombChallenge::dibujarMundo() const {
+void BombChallenge::dibujarMundo(const Context&) const {
     for(const auto& b:bombas) dibujarBomba(b.pos,b.restante);
 }
 

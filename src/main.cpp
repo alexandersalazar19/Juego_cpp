@@ -162,7 +162,7 @@ int main(){
                         for(const auto& o:obstaculos) o->draw(retos.alfaObstaculo(o->distanciaA(jugador.getPos())));
                         if(estado==Estado::Jugando) jugador.draw();
                         retos.dibujarCapa(ctx); //oscuridad
-                        retos.dibujarMundo(); //bombas que se ven sobre la oscuridad
+                        retos.dibujarMundo(ctx); //bombas y barra de calor: se ven sobre la oscuridad
                         powerups.dibujar(jugador);
                     EndMode2D();
                     if(estado==Estado::Jugando){
@@ -178,6 +178,7 @@ int main(){
                 dibujarHud(puntos,cfg.nombre,nivel,tiempoJugado);
                 dibujarCargas(jugador);
                 dibujarVidas(jugador);
+                retos.dibujarHud(ctx);
                 if(estado==Estado::Jugando && niveles.getFase()==FaseNivel::Anuncio) dibujarAnuncio(nivel,nombreMods(niveles.getMods()).c_str(),niveles.getProgresoAnuncio());
 
                 if(estado==Estado::GameOver){

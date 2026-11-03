@@ -7,7 +7,7 @@ public:
     BombChallenge(const ConfigDificultad& cfg);
 
     void update(float dt,bool activo,Context& ctx) override;
-    void dibujarMundo() const override;
+    void dibujarMundo(const Context&) const override;
     void dibujarAlerta(const Context& ctx) const override;
 
 private:

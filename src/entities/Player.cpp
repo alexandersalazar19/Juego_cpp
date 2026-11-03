@@ -25,6 +25,7 @@ void Player::update(float dt){
 
     //Hacer que no se mueva mas rapido en diagonal
     float largo=sqrt(dir.x*dir.x + dir.y*dir.y);
+    moviendo=(largo>0);
     if(largo>0){
         dir.x/=largo;
         dir.y/=largo;
@@ -104,6 +105,10 @@ bool Player::ganarVida(){
     if(vidas>=MAX_VIDAS) return false;
     vidas++;
     return true;
+}
+
+bool Player::seMueve() const {
+    return moviendo;
 }
 
 Vector2 Player::getPos() const {return pos;}
