@@ -1,3 +1,4 @@
+#include "game/Theme.h"
 #include <cmath>
 #include "obstacles/CircleObstacle.h"
 #include "game/Arena.h"
@@ -19,7 +20,7 @@ void CircleObstacle::update(float dt){
 }
 
 void CircleObstacle::draw(float alfa) const {
-    DrawCircleV(pos,radio,Fade(DARKGRAY,alfa));
+    DrawCircleV(pos,radio,Fade(Theme::CIRCULO,alfa));
 }
 
 bool CircleObstacle::collidesWith(Vector2 centro,float r) const {
@@ -42,3 +43,4 @@ void CircleObstacle::drawGhost(Vector2 d,Color relleno,Color borde) const {
 }
 
 Rectangle CircleObstacle::getBounds() const {return {pos.x-radio,pos.y-radio,radio*2,radio*2};}
+Color CircleObstacle::getColor() const {return Theme::CIRCULO;}

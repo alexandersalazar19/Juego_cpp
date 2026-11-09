@@ -13,6 +13,7 @@ public:
     virtual bool collidesWith(Vector2 centro,float radio) const=0;
     virtual bool isOffscreen() const=0;
     virtual Rectangle getBounds() const=0;
+    virtual Color getColor() const=0; //color propio segun su tipo
     virtual void drawGhost(Vector2 desplazamiento,Color relleno,Color borde) const=0; //silueta para el aviso
 
     int getPoints() const {return points;}

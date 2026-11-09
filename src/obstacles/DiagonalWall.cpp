@@ -1,3 +1,4 @@
+#include "game/Theme.h"
 #include <cmath>
 #include "obstacles/DiagonalWall.h"
 #include "game/Arena.h"
@@ -11,16 +12,16 @@ void DiagonalWall::update(float dt){
 }
 
 void DiagonalWall::draw(float alfa) const {
-    DrawRectanglePro(Rectangle{centro.x,centro.y,tam.x,tam.y},Vector2{tam.x/2,tam.y/2},angulo,Fade(GRAY,alfa));
+    DrawRectanglePro(Rectangle{centro.x,centro.y,tam.x,tam.y},Vector2{tam.x/2,tam.y/2},angulo,Fade(Theme::MURO,alfa));
 }
 
 bool DiagonalWall::collidesWith(Vector2 cj,float radio) const {
     float rad=-angulo*DEG2RAD;
     float dx=cj.x-centro.x;
     float dy=cj.y-centro.y;
-
+    
     Vector2 local={dx*cos(rad) - dy*sin(rad),dx*sin(rad) + dy*cos(rad)};
-
+    
     Rectangle rectLocal={-tam.x/2,-tam.y/2,tam.x,tam.y};
     return CheckCollisionCircleRec(local,radio,rectLocal);
 }
@@ -38,7 +39,7 @@ bool DiagonalWall::isOffscreen() const {
 void DiagonalWall::drawGhost(Vector2 d,Color relleno,Color borde) const {
     Vector2 c={centro.x+d.x,centro.y+d.y};
     DrawRectanglePro(Rectangle{c.x,c.y,tam.x,tam.y},Vector2{tam.x/2,tam.y/2},angulo,relleno);
-
+    
     float rad=angulo*DEG2RAD;
     float cs=cos(rad);
     float sn=sin(rad);
@@ -60,3 +61,5 @@ Rectangle DiagonalWall::getBounds() const {
     float hy=tam.x/2*s+tam.y/2*c;
     return {centro.x-hx,centro.y-hy,hx*2,hy*2};
 }
+
+Color DiagonalWall::getColor() const {return Theme::MURO;}

@@ -1,3 +1,4 @@
+#include "game/Theme.h"
 #include "powerups/PowerUpManager.h"
 #include "game/Arena.h"
 #include "game/Random.h"
@@ -53,5 +54,5 @@ void PowerUpManager::update(float dt,bool activo,Context& ctx){
 
 void PowerUpManager::dibujar(const Player& jugador) const {
     for(const auto& p:pickups) p.draw();
-    if(desafio>0) DrawRing(jugador.getPos(),jugador.getRadio()+5,jugador.getRadio()+8,-90.0F,-90.0F+360.0F*(desafio/TIEMPO_DESAFIO),32,GREEN);
+    if(desafio>0) DrawRing(jugador.getPos(),jugador.getRadio()+5,jugador.getRadio()+8,-90.0F,-90.0F+360.0F*(desafio/TIEMPO_DESAFIO),32,Theme::POWERUP);
 }

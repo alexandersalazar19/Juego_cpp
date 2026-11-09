@@ -14,6 +14,7 @@
 #include "ui/Hud.h"
 #include "game/SpawnQueue.h"
 #include "effects/Effects.h"
+#include "game/Theme.h"
 using namespace std;
 
 enum class Estado{Menu,Jugando,Muriendo,GameOver};
@@ -38,6 +39,7 @@ int main(){
     Effects efectos;
 
     Estado estado=Estado::Menu;
+    int seleccion=0; //boton marcado en el menu
     int dificultad=0;
     int puntos=0;
     float temporizador=0.0F;
@@ -66,17 +68,29 @@ int main(){
         if(estado!=Estado::Menu) efectos.update(dt);
         const ConfigDificultad& cfg=getConfig(dificultad);
         int nivel=niveles.getNivel();
-        Context ctx{jugador,cfg,nivel,puntos};
+        Context ctx{jugador,cfg,nivel,puntos,efectos};
 
         switch(estado){
-            case Estado::Menu:
+            case Estado::Menu:{
+                Vector2 md=GetMouseDelta();
+                int bajo=botonBajoMouse();
+                if((md.x!=0 || md.y!=0) && bajo>=0) seleccion=bajo; //el raton solo manda cuando se mueve
+                if(IsKeyPressed(KEY_S) || IsKeyPressed(KEY_DOWN)) seleccion=(seleccion+1)%NUM_DIFICULTADES;
+                if(IsKeyPressed(KEY_W) || IsKeyPressed(KEY_UP)) seleccion=(seleccion+NUM_DIFICULTADES-1)%NUM_DIFICULTADES;
+
+                int elegido=-1;
+                if(IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE)) elegido=seleccion;
+                if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && bajo>=0) elegido=bajo;
                 for(int i=0;i<NUM_DIFICULTADES;i++){
-                    if(IsKeyPressed(KEY_ONE+i)){
-                        dificultad=i;
-                        nuevaPartida();
-                    }
+                    if(IsKeyPressed(KEY_ONE+i)) elegido=i;
+                }
+                if(elegido>=0){
+                    seleccion=elegido;
+                    dificultad=elegido;
+                    nuevaPartida();
                 }
                 break;
+            }
 
             case Estado::Jugando:{
                 int vidasAntes=jugador.getVidas();
@@ -145,19 +159,23 @@ int main(){
             case Estado::GameOver:
                 tMensaje+=dt;
                 if(IsKeyPressed(KEY_R)) nuevaPartida();
-                if(IsKeyPressed(KEY_M)) estado=Estado::Menu;
+                if(IsKeyPressed(KEY_M)){
+                    seleccion=dificultad; //el menu vuelve marcando la que jugabas
+                    estado=Estado::Menu;
+                }
                 break;
         }
 
         BeginDrawing();
-            ClearBackground(RAYWHITE);
+            ClearBackground(Theme::FONDO);
 
-            if(estado==Estado::Menu) dibujarMenu();
+            if(estado==Estado::Menu) dibujarMenu(seleccion);
             else{
                 Rectangle a=Arena::area();
                 Camera2D cam={efectos.getTemblor(),{0.0F,0.0F},0.0F,1.0F};
                 BeginScissorMode((int)a.x,(int)a.y,(int)a.width,(int)a.height);
                     BeginMode2D(cam);
+                        dibujarRejilla();
                         moneda.draw();
                         for(const auto& o:obstaculos) o->draw(retos.alfaObstaculo(o->distanciaA(jugador.getPos())));
                         if(estado==Estado::Jugando) jugador.draw();
@@ -186,8 +204,8 @@ int main(){
                     Vector2 m=Arena::centro();
                     const char* t1="PERDISTE";
                     const char* t2="R: reiniciar  M: menú";
-                    DrawText(t1,(int)m.x-MeasureText(t1,60)/2,(int)m.y-60,60,Fade(RED,alfa));
-                    DrawText(t2,(int)m.x-MeasureText(t2,24)/2,(int)m.y+10,24,Fade(RAYWHITE,alfa));
+                    DrawText(t1,(int)m.x-MeasureText(t1,60)/2,(int)m.y-60,60,Fade(Theme::PELIGRO,alfa));
+                    DrawText(t2,(int)m.x-MeasureText(t2,24)/2,(int)m.y+10,24,Fade(Theme::TEXTO,alfa));
                 }
             }
         EndDrawing();

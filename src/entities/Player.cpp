@@ -1,3 +1,4 @@
+#include "game/Theme.h"
 #include <cmath>
 #include <algorithm>
 #include "entities/Player.h"
@@ -55,11 +56,11 @@ void Player::update(float dt){
 }
 
 void Player::draw() const {
-    Color c=MAROON;
-    if(invul>0 && !((int)(invul*10)%2)) c=Fade(MAROON,0.35F); //parpadeo
+    Color c=Theme::JUGADOR;
+    if(invul>0 && !((int)(invul*10)%2)) c=Fade(Theme::JUGADOR,0.35F); //parpadeo
     if(cargas>0 && CheckCollisionPointRec(GetMousePosition(),Arena::area())){
-        if(ALCANCE_TP>0) DrawCircleLinesV(pos,ALCANCE_TP,Fade(GRAY,0.5F));
-        DrawCircleLinesV(destinoTp(),radio,Fade(MAROON,0.6F));
+        if(ALCANCE_TP>0) DrawCircleLinesV(pos,ALCANCE_TP,Fade(Theme::TEXTO_SEC,0.5F));
+        DrawCircleLinesV(destinoTp(),radio,Fade(Theme::JUGADOR,0.6F));
     }
     DrawCircleV(pos,radio,c);
 }

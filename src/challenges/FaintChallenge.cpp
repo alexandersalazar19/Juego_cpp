@@ -3,7 +3,7 @@
 using namespace std;
 
 namespace{
-    const float ALFA_MIN=0.09F;
+    const float ALFA_MIN=0.08F;
     const float DIST_LEJOS=380.0F;
     const float DIST_CERCA=120.0F;
 }

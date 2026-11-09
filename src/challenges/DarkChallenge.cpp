@@ -1,3 +1,4 @@
+#include "game/Theme.h"
 #include <algorithm>
 #include <cmath>
 #include "challenges/DarkChallenge.h"
@@ -28,7 +29,7 @@ DarkChallenge::DarkChallenge(){
             float dy=(y+0.5F-N/2.0F)/(N/2.0F);
             float d=sqrt(dx*dx+dy*dy);
             float a=suave((d-NUCLEO)/(1.0F-NUCLEO));
-            ImageDrawPixel(&img,x,y,Color{0,0,0,(unsigned char)(a*255.0F)});
+            ImageDrawPixel(&img,x,y,Color{Theme::VELO.r,Theme::VELO.g,Theme::VELO.b,(unsigned char)(a*255.0F)});
         }
     }
     luz=LoadTextureFromImage(img);
@@ -62,7 +63,7 @@ void DarkChallenge::dibujarCapa(const Context& ctx) const {
 
     Rectangle a=Arena::area();
     Vector2 p=ctx.jugador.getPos();
-    Color negro=Fade(BLACK,alfa);
+    Color negro=Fade(Theme::VELO,alfa);
 
     float x0=p.x-radio,x1=p.x+radio;
     float y0=p.y-radio,y1=p.y+radio;

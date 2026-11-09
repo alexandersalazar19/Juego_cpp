@@ -2,11 +2,12 @@
 #include <cmath>
 #include "challenges/HeatChallenge.h"
 #include "game/Arena.h"
+#include "game/Theme.h"
 using namespace std;
 
 namespace{
-    const float CALOR_POR_SEG=0.25F; //4s moviendose sin parar para explotar
-    const float ENFRIAR_POR_SEG=0.40F; //2.5s quieto para enfriarse del todo
+    const float CALOR_POR_SEG=0.25F; //4 s moviendose sin parar para explotar
+    const float ENFRIAR_POR_SEG=0.30F; //~3 s quieto para enfriarse del todo
     const float AVISO=0.70F; //a partir de aqui: alerta
     const float TRAS_EXPLOTAR=0.50F; //calor con el que vuelves tras explotar
 
@@ -15,10 +16,11 @@ namespace{
     }
 
     Color colorCalor(float c){
-        if(c<AVISO) return mezclar(YELLOW,ORANGE,c/AVISO);
-        return mezclar(ORANGE,RED,(c-AVISO)/(1.0F-AVISO));
+        if(c<AVISO) return mezclar(Theme::CALOR_FRIO,Theme::CALOR_MEDIO,c/AVISO);
+        return mezclar(Theme::CALOR_MEDIO,Theme::CALOR_MAX,(c-AVISO)/(1.0F-AVISO));
     }
 
+    //parpadeo que se acelera cuanto mas calor
     float pulso(float calor){
         if(calor<AVISO) return 1.0F;
         float k=(calor-AVISO)/(1.0F-AVISO);
@@ -47,15 +49,17 @@ void HeatChallenge::dibujarMundo(const Context& ctx) const {
     float pl=pulso(calor);
     Color c=colorCalor(calor);
 
+    //aro alrededor del jugador
     DrawRing(p,r+3,r+7,0.0F,360.0F,32,Fade(c,0.25F+0.5F*calor*pl));
 
+    //barra sobre la cabeza (debajo si el jugador esta pegado al borde de arriba)
     const float w=46.0F,h=7.0F;
     float by=p.y-r-20.0F;
     if(by<a.y+2) by=p.y+r+13.0F;
     Rectangle fondo={p.x-w/2,by,w,h};
-    DrawRectangleRec(fondo,Fade(BLACK,0.55F));
+    DrawRectangleRec(fondo,Fade(Theme::HUD,0.85F));
     DrawRectangleRec({fondo.x,fondo.y,w*calor,h},Fade(c,alerta ? 0.5F+0.5F*pl : 1.0F));
-    DrawRectangleLinesEx(fondo,1.0F,Fade(BLACK,0.8F));
+    DrawRectangleLinesEx(fondo,1.0F,Fade(Theme::TEXTO,0.5F));
 }
 
 void HeatChallenge::dibujarHud(const Context&) const {
@@ -69,9 +73,9 @@ void HeatChallenge::dibujarHud(const Context&) const {
     Color c=colorCalor(calor);
 
     const char* t="CALOR";
-    DrawText(t,(int)x-MeasureText(t,16)-8,(int)(y+2),16,LIGHTGRAY);
+    DrawText(t,(int)x-MeasureText(t,16)-8,(int)(y+2),16,Theme::TEXTO_SEC);
 
-    DrawRectangleRec({x,y,w,h},Fade(WHITE,0.15F));
+    DrawRectangleRec({x,y,w,h},Fade(Theme::TEXTO,0.12F));
     DrawRectangleRec({x,y,w*calor,h},Fade(c,alerta ? 0.55F+0.45F*pl : 1.0F));
-    DrawRectangleLinesEx({x,y,w,h},2.0F,alerta ? Fade(RED,0.5F+0.5F*pl) : WHITE);
+    DrawRectangleLinesEx({x,y,w,h},2.0F,alerta ? Fade(Theme::PELIGRO,0.5F+0.5F*pl) : Theme::TEXTO_SEC);
 }

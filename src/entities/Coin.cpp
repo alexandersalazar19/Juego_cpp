@@ -1,10 +1,11 @@
+#include "game/Theme.h"
 #include "entities/Coin.h"
 #include "game/Arena.h"
 
 Coin::Coin(float x,float y):pos{x,y},radio(12.0F){}
 
 void Coin::draw() const {
-    DrawCircleV(pos,radio,GOLD);
+    DrawCircleV(pos,radio,Theme::MONEDA);
 }
 
 bool Coin::collidesWith(Vector2 centro,float r) const {

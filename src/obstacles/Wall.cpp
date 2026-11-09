@@ -1,3 +1,4 @@
+#include "game/Theme.h"
 #include "obstacles/Wall.h"
 #include "game/Arena.h"
 
@@ -9,7 +10,7 @@ void Wall::update(float dt){
 }
 
 void Wall::draw(float alfa) const {
-    DrawRectangleRec(rect,Fade(GRAY,alfa));
+    DrawRectangleRec(rect,Fade(Theme::MURO,alfa));
 }
 
 bool Wall::collidesWith(Vector2 centro,float radio) const {
@@ -32,3 +33,4 @@ void Wall::drawGhost(Vector2 d,Color relleno,Color borde) const {
 }
 
 Rectangle Wall::getBounds() const {return rect;}
+Color Wall::getColor() const {return Theme::MURO;}

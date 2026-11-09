@@ -11,6 +11,7 @@ public:
     bool isOffscreen() const override;
     void drawGhost(Vector2 desplazamiento,Color relleno,Color borde) const override;
     Rectangle getBounds() const override;
+    Color getColor() const override;
 
 private:
     Vector2 base; //linea por la que avanza
