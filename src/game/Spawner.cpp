@@ -3,6 +3,7 @@
 #include "obstacles/Wall.h"
 #include "obstacles/CircleObstacle.h"
 #include "obstacles/DiagonalWall.h"
+#include "obstacles/TriangleShooter.h"
 #include "game/Arena.h"
 using namespace std;
 
@@ -11,6 +12,7 @@ namespace{
     const float LARGO_MIN=120.0F,LARGO_MAX=360.0F;
     const float HUECO_MIN=100.0F,HUECO_MAX=180.0F;
     const float RADIO_MIN=15.0F,RADIO_MAX=23.0F;
+    const float RADIO_TRI_MIN=30.0F,RADIO_TRI_MAX=38.0F;
 
     float aleatorio(float min,float max){
         return min+(max-min)*GetRandomValue(0,1000)/1000.0F;
@@ -110,6 +112,35 @@ namespace{
         out.push_back(make_unique<CircleObstacle>(pos,r,v,amplitud,frecuencia));
     }
 
+    void trianguloLaser(ListaObstaculos& out,int lado,float vel){
+        const Rectangle a=Arena::area();
+        const float R=aleatorio(RADIO_TRI_MIN,RADIO_TRI_MAX);
+        float x=(float)GetRandomValue((int)(a.x+a.width*0.2F),(int)(a.x+a.width*0.8F));
+        float y=(float)GetRandomValue((int)(a.y+a.height*0.2F),(int)(a.y+a.height*0.8F));
+
+        Vector2 pos;
+        switch(lado){
+            case 0: pos={a.x-R,y}; break;
+            case 1: pos={a.x+a.width+R,y}; break;
+            case 2: pos={x,a.y-R}; break;
+            default: pos={x,a.y+a.height+R}; break;
+        }
+
+        //avanza en linea recta hacia un punto de la zona central, asi siempre cruza la pantalla
+        Vector2 meta={a.x+a.width*aleatorio(0.3F,0.7F),a.y+a.height*aleatorio(0.3F,0.7F)};
+        float dx=meta.x-pos.x;
+        float dy=meta.y-pos.y;
+        float l=sqrt(dx*dx+dy*dy);
+        float vt=vel*0.8F; //mas lento que el resto: se queda un rato disparando
+        Vector2 v={dx/l*vt,dy/l*vt};
+
+        float giro=aleatorio(70.0F,130.0F)*(GetRandomValue(0,1) ? 1.0F : -1.0F);
+        float cada=aleatorio(1.9F,2.8F);
+        float velLaser=vel*1.9F+140.0F;
+
+        out.push_back(make_unique<TriangleShooter>(pos,R,v,giro,cada,velLaser));
+    }
+
     int elegirTipo(const ConfigDificultad& c){
         int total=0;
         for(int p:c.pesos) total+=p;
@@ -130,16 +161,7 @@ void spawnObstaculos(ListaObstaculos& out,float velocidad,const ConfigDificultad
         case T_PARED_SIMPLE: paredSimple(out,lado,vel); break;
         case T_PARED_DOBLE: paredDoble(out,lado,vel); break;
         case T_PARED_DIAGONAL: paredDiagonal(out,lado,vel); break;
+        case T_TRIANGULO: trianguloLaser(out,lado,vel); break;
         default: circuloOnda(out,lado,vel); break;
     }
-}
-
-Pickup crearPickup(TipoPickup tipo,Vector2 evitar){
-    Rectangle a=Arena::area();
-    const float m=40.0F;
-    Vector2 p;
-    do{
-        p={(float)GetRandomValue((int)(a.x+m),(int)(a.x+a.width-m)),(float)GetRandomValue((int)(a.y+m),(int)(a.y+a.height-m))};
-    }while(CheckCollisionPointCircle(p,evitar,200.0F)); //nunca encima del jugador
-    return Pickup(tipo,p);
 }

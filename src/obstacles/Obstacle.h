@@ -1,6 +1,8 @@
 #pragma once
 #include <algorithm>
 #include <cmath>
+#include <memory>
+#include <vector>
 #include "raylib.h"
 using namespace std;
 
@@ -15,6 +17,7 @@ public:
     virtual Rectangle getBounds() const=0;
     virtual Color getColor() const=0; //color propio segun su tipo
     virtual void drawGhost(Vector2 desplazamiento,Color relleno,Color borde) const=0; //silueta para el aviso
+    virtual void emitir(vector<unique_ptr<Obstacle>>&){} //obstaculos nuevos que este genera (ej. los laseres del triangulo)
 
     int getPoints() const {return points;}
 

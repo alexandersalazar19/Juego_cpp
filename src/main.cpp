@@ -124,6 +124,10 @@ int main(){
                     }else it++;
                 }
 
+                ListaObstaculos nacidos; //obstaculos que otros generan (los laseres de los triangulos)
+                for(auto& o:obstaculos) o->emitir(nacidos);
+                for(auto& n:nacidos) obstaculos.push_back(move(n));
+
                 retos.update(dt,niveles.puedeSpawnear(),ctx);
                 if(jugador.getVidas()<vidasAntes){
                     powerups.alRecibirGolpe();

@@ -66,7 +66,6 @@ int botonBajoMouse(){
 
 void dibujarMenu(int seleccion){
     const int W=GetScreenWidth();
-    const int H=GetScreenHeight();
     static float anim[NUM_DIFICULTADES]={}; //0 = reposo, 1 = seleccionado (transicion suave)
     float dt=GetFrameTime();
 

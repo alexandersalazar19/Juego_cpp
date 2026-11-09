@@ -17,6 +17,8 @@ namespace Theme{
     constexpr Color JUGADOR={0,229,255,255};
     constexpr Color MURO={180,75,255,255};
     constexpr Color CIRCULO={255,60,180,255};
+    constexpr Color TRIANGULO={35,215,170,255}; //triangulo con laseres (aqua)
+    constexpr Color LASER={255,50,60,255};
 
     //peligros, premios y avisos
     constexpr Color PELIGRO={255,59,48,255};

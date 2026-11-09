@@ -5,6 +5,7 @@ enum TipoObstaculo{
     T_PARED_DOBLE,
     T_PARED_DIAGONAL,
     T_CIRCULO,
+    T_TRIANGULO,
     NUM_TIPOS
 };
 
