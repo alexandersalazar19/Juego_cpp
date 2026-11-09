@@ -1,0 +1,2318 @@
+]633;E;for f in Makefile $(find src -name '*.h' -o -name '*.cpp' | sort);b30db5d4-39ed-40b8-8b5a-14642295c8be]633;C=== Makefile ===
+CXX=g++
+CXXFLAGS=-Wall -Wextra -MMD -MP -Isrc
+LDLIBS=-lraylib -lGL -lm -lpthread -ldl -lrt -lX11
+
+SRC=$(shell find src -name '*.cpp')
+OBJ=$(SRC:src/%.cpp=build/%.o)
+DEP=$(OBJ:.o=.d)
+
+juego: $(OBJ)
+	$(CXX) $(OBJ) -o juego $(LDLIBS)
+
+build/%.o: src/%.cpp
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+run: juego
+	./juego
+
+clean:
+	rm -rf build juego
+	clear
+
+.PHONY: run clean
+
+-include $(DEP)
+=== src/challenges/BombChallenge.cpp ===
+#include <algorithm>
+#include <cmath>
+#include "challenges/BombChallenge.h"
+#include "game/Arena.h"
+#include "game/Random.h"
+#include "game/Theme.h"
+#include "ui/Hud.h"
+using namespace std;
+
+namespace{
+    const float DURACION=6.0F; //segundos hasta que explota
+    const float RADIO=18.0F;
+
+    void dibujarBomba(Vector2 pos,float restante){
+        float f=restante/DURACION;
+        bool alerta=(f<0.4F && (int)(restante*10)%2==0);
+        DrawCircleV(pos,RADIO,alerta ? Theme::PELIGRO : Theme::CUERPO_BOMBA);
+        DrawRing(pos,RADIO-2,RADIO,0.0F,360.0F,32,Theme::PELIGRO); //borde rojo
+        DrawCircleV({pos.x-RADIO*0.35F,pos.y-RADIO*0.35F},RADIO*0.2F,Fade(Theme::TEXTO,0.35F)); //brillo
+
+        Vector2 base={pos.x+RADIO*0.5F,pos.y-RADIO*0.85F}; //mecha
+        Vector2 punta={pos.x+RADIO*1.0F,pos.y-RADIO*1.5F};
+        DrawLineEx(base,punta,3.0F,Theme::TEXTO_SEC);
+        float s=0.6F+0.4F*sin(restante*30.0F); //chispa que titila
+        DrawCircleV(punta,3.0F+3.0F*s,Theme::AVISO);
+        DrawCircleV(punta,2.0F,Theme::MONEDA);
+
+        DrawRing(pos,RADIO+4,RADIO+7,-90.0F,-90.0F+360.0F*f,32,Theme::PELIGRO);
+        const char* t=TextFormat("%d",(int)ceil(restante));
+        DrawText(t,(int)pos.x-MeasureText(t,20)/2,(int)pos.y-10,20,Theme::TEXTO);
+    }
+}
+
+BombChallenge::BombChallenge(const ConfigDificultad& cfg):cada(cfg.bombaCada),proxima(variar(cfg.bombaCada)){}
+
+void BombChallenge::update(float dt,bool activo,Context& ctx){
+    if(activo && cada>0){
+        proxima-=dt;
+        if(proxima<=0){
+            bombas.push_back({Arena::puntoLibre(ctx.jugador.getPos(),200.0F,40.0F),DURACION});
+            proxima=variar(cada);
+        }
+    }
+
+    //la onda expansiva dana al jugador cuando su borde lo alcanza
+    for(auto it=explosiones.begin();it!=explosiones.end();){
+        it->t+=dt;
+        float r=VELOCIDAD_ONDA_BOMBA*it->t;
+        if(!it->golpeo){
+            float dx=ctx.jugador.getPos().x-it->pos.x;
+            float dy=ctx.jugador.getPos().y-it->pos.y;
+            float d=sqrt(dx*dx+dy*dy);
+            if(r>=d-ctx.jugador.getRadio()){ //el frente llego al jugador
+                it->golpeo=true;
+                bool yaPaso=(r>d+ctx.jugador.getRadio()+VELOCIDAD_ONDA_BOMBA*dt*2.0F); //te teletransportaste detras del frente
+                if(!yaPaso) ctx.jugador.recibirGolpe();
+            }
+        }
+        if(r>=Effects::alcanceOnda(it->pos)) it=explosiones.erase(it);
+        else it++;
+    }
+
+    for(auto it=bombas.begin();it!=bombas.end();){
+        it->restante-=dt;
+        if(CheckCollisionCircles(it->pos,RADIO,ctx.jugador.getPos(),ctx.jugador.getRadio())){
+            ctx.puntos+=puntosPor(150,ctx.cfg,ctx.nivel); //la desactivaste
+            it=bombas.erase(it);
+        }else if(it->restante<=0){
+            ctx.efectos.explosion(it->pos);
+            explosiones.push_back({it->pos,0.0F,false});
+            it=bombas.erase(it);
+        }else it++;
+    }
+}
+
+void BombChallenge::dibujarMundo(const Context&) const {
+    for(const auto& b:bombas) dibujarBomba(b.pos,b.restante);
+}
+
+void BombChallenge::dibujarAlerta(const Context&) const {
+    if(bombas.empty()) return;
+    float urgencia=0.0F; //la de la bomba mas cercana a explotar
+    for(const auto& b:bombas) urgencia=max(urgencia,1.0F-b.restante/DURACION);
+    dibujarAlertaBomba(urgencia);
+}
+=== src/challenges/BombChallenge.h ===
+#pragma once
+#include <vector>
+#include "challenges/Challenge.h"
+using namespace std;
+
+class BombChallenge:public Challenge{
+public:
+    BombChallenge(const ConfigDificultad& cfg);
+
+    void update(float dt,bool activo,Context& ctx) override;
+    void dibujarMundo(const Context& ctx) const override;
+    void dibujarAlerta(const Context& ctx) const override;
+
+private:
+    struct Bomba{
+        Vector2 pos;
+        float restante;
+    };
+
+    struct Explosion{ //onda expansiva en camino: dana al jugador cuando lo alcanza
+        Vector2 pos;
+        float t;
+        bool golpeo;
+    };
+    
+    vector<Bomba> bombas;
+    vector<Explosion> explosiones;
+    float cada; //segundos entre bombas
+    float proxima;
+};
+=== src/challenges/Challenge.h ===
+#pragma once
+#include "game/Context.h"
+
+class Challenge{
+public:
+    virtual ~Challenge()=default;
+
+    virtual void update(float dt,bool activo,Context& ctx)=0;
+    virtual void dibujarCapa(const Context&) const {}
+    virtual void dibujarMundo(const Context&) const {}
+    virtual void dibujarAlerta(const Context&) const {}
+    virtual void dibujarHud(const Context&) const {}
+    virtual float alfaObstaculo(float) const {return 1.0F;}
+};
+=== src/challenges/ChallengeManager.cpp ===
+#include "challenges/ChallengeManager.h"
+#include "game/Levels.h"
+#include "challenges/BombChallenge.h"
+#include "challenges/FaintChallenge.h"
+#include "challenges/DarkChallenge.h"
+#include "challenges/HeatChallenge.h"
+using namespace std;
+
+void ChallengeManager::configurar(int mods,const ConfigDificultad& cfg){
+    lista.clear();
+    if(mods&MOD_BOMBA) lista.push_back(make_unique<BombChallenge>(cfg));
+    if(mods&MOD_TENUE) lista.push_back(make_unique<FaintChallenge>());
+    if(mods&MOD_OSCURO) lista.push_back(make_unique<DarkChallenge>());
+    if(mods&MOD_CALOR) lista.push_back(make_unique<HeatChallenge>());
+}
+
+void ChallengeManager::limpiar(){
+    lista.clear();
+}
+
+void ChallengeManager::update(float dt,bool activo,Context& ctx){
+    for(auto& r:lista) r->update(dt,activo,ctx);
+}
+
+void ChallengeManager::dibujarCapa(const Context& ctx) const {
+    for(const auto& r:lista) r->dibujarCapa(ctx);
+}
+
+void ChallengeManager::dibujarMundo(const Context& ctx) const {
+    for(const auto& r:lista) r->dibujarMundo(ctx);
+}
+
+void ChallengeManager::dibujarAlerta(const Context& ctx) const {
+    for(const auto& r:lista) r->dibujarAlerta(ctx);
+}
+
+void ChallengeManager::dibujarHud(const Context& ctx) const {
+    for(const auto& r:lista) r->dibujarHud(ctx);
+}
+
+float ChallengeManager::alfaObstaculo(float distancia) const {
+    float alfa=1.0F;
+    for(const auto& r:lista) alfa*=r->alfaObstaculo(distancia);
+    return alfa;
+}
+=== src/challenges/ChallengeManager.h ===
+#pragma once
+#include <memory>
+#include <vector>
+#include "challenges/Challenge.h"
+using namespace std;
+
+class ChallengeManager{
+public:
+    void configurar(int mods,const ConfigDificultad& cfg);
+    void limpiar();
+    void update(float dt,bool activo,Context& ctx);
+    void dibujarCapa(const Context& ctx) const;
+    void dibujarMundo(const Context& ctx) const;
+    void dibujarAlerta(const Context& ctx) const;
+    void dibujarHud(const Context& ctx) const;
+    float alfaObstaculo(float distancia) const;
+
+private:
+    vector<unique_ptr<Challenge>> lista;
+};
+=== src/challenges/DarkChallenge.cpp ===
+#include "game/Theme.h"
+#include <algorithm>
+#include <cmath>
+#include "challenges/DarkChallenge.h"
+#include "game/Arena.h"
+using namespace std;
+
+namespace{
+    const float RADIO_INICIAL=950.0F;
+    const float RADIO_FINAL=300.0F;
+    const float NUCLEO=0.10F;
+    const float OSCURIDAD=0.92F;
+    const float DURACION_ENTRADA=3.0F;
+    const float DURACION_SALIDA=7.0F;
+    const float MARGEN=40.0F;
+
+    float suave(float t){
+        t=clamp(t,0.0F,1.0F);
+        return t*t*(3.0F-2.0F*t);
+    }
+}
+
+DarkChallenge::DarkChallenge(){
+    const int N=256;
+    Image img=GenImageColor(N,N,BLANK);
+    for(int y=0;y<N;y++){
+        for(int x=0;x<N;x++){
+            float dx=(x+0.5F-N/2.0F)/(N/2.0F);
+            float dy=(y+0.5F-N/2.0F)/(N/2.0F);
+            float d=sqrt(dx*dx+dy*dy);
+            float a=suave((d-NUCLEO)/(1.0F-NUCLEO));
+            ImageDrawPixel(&img,x,y,Color{Theme::VELO.r,Theme::VELO.g,Theme::VELO.b,(unsigned char)(a*255.0F)});
+        }
+    }
+    luz=LoadTextureFromImage(img);
+    UnloadImage(img);
+    SetTextureFilter(luz,TEXTURE_FILTER_BILINEAR);
+}
+
+DarkChallenge::~DarkChallenge(){
+    UnloadTexture(luz);
+}
+
+void DarkChallenge::update(float dt,bool activo,Context&){
+    if(activo){
+        huboActivo=true;
+        entrada+=dt;
+    }else if(huboActivo) salida+=dt;
+}
+
+float DarkChallenge::intensidad() const {
+    float fin=suave(entrada/DURACION_ENTRADA);
+    float fout=1.0F-suave(salida/DURACION_SALIDA);
+    return fin*fout;
+}
+
+void DarkChallenge::dibujarCapa(const Context& ctx) const {
+    float k=intensidad();
+    if(k<=0.001F) return;
+
+    float radio=RADIO_INICIAL+(RADIO_FINAL-RADIO_INICIAL)*k;
+    float alfa=OSCURIDAD*k;
+
+    Rectangle a=Arena::area();
+    Vector2 p=ctx.jugador.getPos();
+    Color negro=Fade(Theme::VELO,alfa);
+
+    float x0=p.x-radio,x1=p.x+radio;
+    float y0=p.y-radio,y1=p.y+radio;
+    DrawTexturePro(luz,Rectangle{0,0,(float)luz.width,(float)luz.height},Rectangle{x0,y0,radio*2,radio*2},Vector2{0,0},0.0F,Fade(WHITE,alfa));
+
+    float ax0=a.x-MARGEN,ay0=a.y-MARGEN;
+    float ax1=a.x+a.width+MARGEN,ay1=a.y+a.height+MARGEN;
+    float cx0=clamp(x0,ax0,ax1),cx1=clamp(x1,ax0,ax1);
+    float cy0=clamp(y0,ay0,ay1),cy1=clamp(y1,ay0,ay1);
+    DrawRectangleRec({ax0,ay0,ax1-ax0,cy0-ay0},negro);
+    DrawRectangleRec({ax0,cy1,ax1-ax0,ay1-cy1},negro);
+    DrawRectangleRec({ax0,cy0,cx0-ax0,cy1-cy0},negro);
+    DrawRectangleRec({cx1,cy0,ax1-cx1,cy1-cy0},negro);
+}
+=== src/challenges/DarkChallenge.h ===
+#pragma once
+#include "challenges/Challenge.h"
+
+class DarkChallenge:public Challenge{
+public:
+    DarkChallenge();
+    ~DarkChallenge() override;
+    DarkChallenge(const DarkChallenge&)=delete;
+    DarkChallenge& operator=(const DarkChallenge&)=delete;
+
+    void update(float dt,bool activo,Context& ctx) override;
+    void dibujarCapa(const Context& ctx) const override;
+
+private:
+    Texture2D luz;
+    float entrada=0.0F;
+    float salida=0.0F;
+    bool huboActivo=false;
+    float intensidad() const;
+};
+=== src/challenges/FaintChallenge.cpp ===
+#include <algorithm>
+#include "challenges/FaintChallenge.h"
+using namespace std;
+
+namespace{
+    const float ALFA_MIN=0.08F;
+    const float DIST_LEJOS=380.0F;
+    const float DIST_CERCA=120.0F;
+}
+
+void FaintChallenge::update(float,bool,Context&){}
+
+float FaintChallenge::alfaObstaculo(float distancia) const {
+    float t=clamp((DIST_LEJOS-distancia)/(DIST_LEJOS-DIST_CERCA),0.0F,1.0F);
+    return ALFA_MIN+(1.0F-ALFA_MIN)*t;
+}
+=== src/challenges/FaintChallenge.h ===
+#pragma once
+#include "challenges/Challenge.h"
+
+class FaintChallenge:public Challenge{
+public:
+    void update(float dt,bool activo,Context& ctx) override;
+    float alfaObstaculo(float distancia) const override;
+};
+=== src/challenges/HeatChallenge.cpp ===
+#include <algorithm>
+#include <cmath>
+#include "challenges/HeatChallenge.h"
+#include "game/Arena.h"
+#include "game/Theme.h"
+using namespace std;
+
+namespace{
+    const float CALOR_POR_SEG=0.25F; //4 s moviendose sin parar para explotar
+    const float ENFRIAR_POR_SEG=0.30F; //~3 s quieto para enfriarse del todo
+    const float AVISO=0.70F; //a partir de aqui: alerta
+    const float TRAS_EXPLOTAR=0.50F; //calor con el que vuelves tras explotar
+
+    Color mezclar(Color a,Color b,float t){
+        return Color{(unsigned char)(a.r+(b.r-a.r)*t),(unsigned char)(a.g+(b.g-a.g)*t),(unsigned char)(a.b+(b.b-a.b)*t),255};
+    }
+
+    Color colorCalor(float c){
+        if(c<AVISO) return mezclar(Theme::CALOR_FRIO,Theme::CALOR_MEDIO,c/AVISO);
+        return mezclar(Theme::CALOR_MEDIO,Theme::CALOR_MAX,(c-AVISO)/(1.0F-AVISO));
+    }
+
+    //parpadeo que se acelera cuanto mas calor
+    float pulso(float calor){
+        if(calor<AVISO) return 1.0F;
+        float k=(calor-AVISO)/(1.0F-AVISO);
+        return 0.5F+0.5F*sin((float)GetTime()*(10.0F+12.0F*k));
+    }
+}
+
+void HeatChallenge::update(float dt,bool activo,Context& ctx){
+    if(activo && ctx.jugador.seMueve()) calor+=CALOR_POR_SEG*dt;
+    else calor-=ENFRIAR_POR_SEG*dt;
+    calor=clamp(calor,0.0F,1.0F);
+
+    if(calor>=1.0F && !ctx.jugador.esInvulnerable()){
+        ctx.jugador.recibirGolpe();
+        calor=TRAS_EXPLOTAR;
+    }
+}
+
+void HeatChallenge::dibujarMundo(const Context& ctx) const {
+    if(ctx.jugador.estaMuerto() || calor<=0.01F) return;
+
+    Rectangle a=Arena::area();
+    Vector2 p=ctx.jugador.getPos();
+    float r=ctx.jugador.getRadio();
+    bool alerta=(calor>=AVISO);
+    float pl=pulso(calor);
+    Color c=colorCalor(calor);
+
+    //aro alrededor del jugador
+    DrawRing(p,r+3,r+7,0.0F,360.0F,32,Fade(c,0.25F+0.5F*calor*pl));
+
+    //barra sobre la cabeza (debajo si el jugador esta pegado al borde de arriba)
+    const float w=46.0F,h=7.0F;
+    float by=p.y-r-20.0F;
+    if(by<a.y+2) by=p.y+r+13.0F;
+    Rectangle fondo={p.x-w/2,by,w,h};
+    DrawRectangleRec(fondo,Fade(Theme::HUD,0.85F));
+    DrawRectangleRec({fondo.x,fondo.y,w*calor,h},Fade(c,alerta ? 0.5F+0.5F*pl : 1.0F));
+    DrawRectangleLinesEx(fondo,1.0F,Fade(Theme::TEXTO,0.5F));
+}
+
+void HeatChallenge::dibujarHud(const Context&) const {
+    const int W=GetScreenWidth();
+    const float w=W*0.11F;
+    const float h=20.0F;
+    const float x=W*0.64F-w/2;
+    const float y=(Arena::HUD_ALTO-h)/2;
+    bool alerta=(calor>=AVISO);
+    float pl=pulso(calor);
+    Color c=colorCalor(calor);
+
+    const char* t="CALOR";
+    DrawText(t,(int)x-MeasureText(t,16)-8,(int)(y+2),16,Theme::TEXTO_SEC);
+
+    DrawRectangleRec({x,y,w,h},Fade(Theme::TEXTO,0.12F));
+    DrawRectangleRec({x,y,w*calor,h},Fade(c,alerta ? 0.55F+0.45F*pl : 1.0F));
+    DrawRectangleLinesEx({x,y,w,h},2.0F,alerta ? Fade(Theme::PELIGRO,0.5F+0.5F*pl) : Theme::TEXTO_SEC);
+}
+=== src/challenges/HeatChallenge.h ===
+#pragma once
+#include "challenges/Challenge.h"
+
+class HeatChallenge:public Challenge{
+public:
+    void update(float dt,bool activo,Context& ctx) override;
+    void dibujarMundo(const Context& ctx) const override;
+    void dibujarHud(const Context& ctx) const override;
+
+private:
+    float calor=0.0F; //0.0 frio, 1.0 explota
+};
+=== src/effects/Effects.cpp ===
+#include <algorithm>
+#include <cmath>
+#include "effects/Effects.h"
+#include "game/Arena.h"
+#include "game/Theme.h"
+using namespace std;
+
+namespace{
+    //golpe normal
+    const int N_PARTICULAS=26;
+    const float DURACION_ONDA=0.40F;
+    const float RADIO_ONDA=110.0F;
+
+    //explosion de bomba
+    const float RADIO_BOLA=120.0F; //tamano de la bola de fuego
+    const float DURACION_BOLA=0.35F;
+    const int N_CHISPAS=36;
+    const int N_BRASAS=16;
+
+    //secuencia de muerte (segundos reales)
+    const float T_EXPLOSION=1.1F; //cuando explota la bolita
+    const float T_TOTAL=2.4F; //cuando aparece el mensaje
+    const float ESCALA_MIN=0.15F; //velocidad minima del juego (en la explosion)
+    const float ESCALA_FINAL=0.5F; //velocidad con la que termina
+    const float OSCURIDAD_MAX=0.78F;
+    const float DURACION_FLASH=0.15F;
+}
+
+void Effects::sacudir(float duracion,float amplitud){
+    temblor=duracion;
+    duracionTemblor=duracion;
+    amplitudTemblor=amplitud;
+}
+
+float Effects::alcanceOnda(Vector2 pos){
+    Rectangle a=Arena::area();
+    float dx=max(pos.x-a.x,a.x+a.width-pos.x); //hasta la esquina mas lejana
+    float dy=max(pos.y-a.y,a.y+a.height-pos.y);
+    return sqrt(dx*dx+dy*dy)+80.0F;
+}
+
+void Effects::golpe(Vector2 pos,float radioJugador){
+    const Color colores[3]={Theme::JUGADOR,Theme::TEXTO,Theme::CIRCULO};
+    for(int i=0;i<N_PARTICULAS;i++){
+        float ang=GetRandomValue(0,359)*DEG2RAD;
+        float rapidez=(float)GetRandomValue(150,450);
+        float vida=GetRandomValue(40,80)/100.0F;
+        particulas.push_back({pos,{cos(ang)*rapidez,sin(ang)*rapidez},vida,vida,(float)GetRandomValue(3,7),colores[i%3],false});
+    }
+    ondas.push_back({pos,0.0F,radioJugador,RADIO_ONDA,DURACION_ONDA,Theme::TEXTO});
+    sacudir(0.30F,9.0F);
+}
+
+void Effects::explosion(Vector2 pos){
+    destellos.push_back({pos,0.0F,DURACION_BOLA,RADIO_BOLA});
+    choques.push_back({pos,0.0F,alcanceOnda(pos)});
+
+    //chispas alargadas
+    const Color chispas[3]={Theme::MONEDA,Theme::AVISO,Theme::TEXTO};
+    for(int i=0;i<N_CHISPAS;i++){
+        float ang=GetRandomValue(0,359)*DEG2RAD;
+        float rapidez=(float)GetRandomValue(300,900);
+        float vida=GetRandomValue(30,70)/100.0F;
+        particulas.push_back({pos,{cos(ang)*rapidez,sin(ang)*rapidez},vida,vida,(float)GetRandomValue(2,4),chispas[i%3],true});
+    }
+
+    //brasas que flotan un poco mas
+    const Color brasas[2]={Theme::PELIGRO,Theme::AVISO};
+    for(int i=0;i<N_BRASAS;i++){
+        float ang=GetRandomValue(0,359)*DEG2RAD;
+        float rapidez=(float)GetRandomValue(60,280);
+        float vida=GetRandomValue(60,120)/100.0F;
+        particulas.push_back({pos,{cos(ang)*rapidez,sin(ang)*rapidez},vida,vida,(float)GetRandomValue(3,6),brasas[i%2],false});
+    }
+
+    sacudir(0.5F,10.0F);
+}
+
+void Effects::iniciarMuerte(Vector2 pos,float radioJugador){
+    muriendo=true;
+    exploto=false;
+    tMuerte=0.0F;
+    posMuerte=pos;
+    radioMuerte=radioJugador;
+}
+
+void Effects::explotar(){
+    exploto=true;
+    const Color colores[4]={Theme::PELIGRO,Theme::AVISO,Theme::MONEDA,Theme::TEXTO};
+    for(int i=0;i<90;i++){
+        float ang=GetRandomValue(0,359)*DEG2RAD;
+        float rapidez=(float)GetRandomValue(120,720);
+        float vida=GetRandomValue(40,90)/100.0F;
+        particulas.push_back({posMuerte,{cos(ang)*rapidez,sin(ang)*rapidez},vida,vida,(float)GetRandomValue(4,12),colores[i%4],false});
+    }
+    ondas.push_back({posMuerte,0.0F,radioMuerte,300.0F,0.9F,Theme::AVISO});
+    ondas.push_back({posMuerte,0.0F,radioMuerte,180.0F,0.6F,Theme::PELIGRO});
+    sacudir(0.5F,16.0F);
+    flash=DURACION_FLASH;
+}
+
+void Effects::update(float dtReal){
+    if(muriendo){
+        tMuerte+=dtReal;
+        if(!exploto && tMuerte>=T_EXPLOSION) explotar();
+    }
+    float dt=dtReal*getEscalaTiempo(); //particulas y ondas van en camara lenta
+
+    for(auto it=particulas.begin();it!=particulas.end();){
+        it->vida-=dt;
+        if(it->vida<=0){
+            it=particulas.erase(it);
+            continue;
+        }
+        it->pos.x+=it->vel.x*dt;
+        it->pos.y+=it->vel.y*dt;
+        float roce=max(0.0F,1.0F-4.0F*dt); //frena con el tiempo
+        it->vel.x*=roce;
+        it->vel.y*=roce;
+        it++;
+    }
+
+    for(auto it=ondas.begin();it!=ondas.end();){
+        it->t+=dt;
+        if(it->t>=it->duracion) it=ondas.erase(it);
+        else it++;
+    }
+
+    for(auto it=destellos.begin();it!=destellos.end();){
+        it->t+=dt;
+        if(it->t>=it->duracion) it=destellos.erase(it);
+        else it++;
+    }
+
+    for(auto it=choques.begin();it!=choques.end();){
+        it->t+=dt;
+        if(VELOCIDAD_ONDA_BOMBA*it->t>=it->radioMax) it=choques.erase(it);
+        else it++;
+    }
+
+    if(temblor>0) temblor=max(0.0F,temblor-dtReal); //temblor y destello en tiempo real
+    if(flash>0) flash=max(0.0F,flash-dtReal);
+}
+
+void Effects::draw() const {
+    //onda expansiva: frente brillante, estela que se adelgaza detras y halo delante
+    for(const auto& c:choques){
+        float r=VELOCIDAD_ONDA_BOMBA*c.t;
+        float f=min(1.0F,r/c.radioMax); //0 al nacer, 1 al cubrir toda la pantalla
+        float g=1.0F-f;
+        float a=g*sqrt(g); //se desvanece mientras avanza
+        float cola=60.0F+140.0F*g;
+        DrawRing(c.pos,max(0.0F,r-cola),r,0.0F,360.0F,128,Fade(Theme::PELIGRO,0.10F*a));
+        DrawRing(c.pos,max(0.0F,r-cola*0.5F),r,0.0F,360.0F,128,Fade(Theme::AVISO,0.16F*a));
+        DrawRing(c.pos,max(0.0F,r-cola*0.2F),r,0.0F,360.0F,128,Fade(Theme::MONEDA,0.30F*a));
+        DrawRing(c.pos,r,r+14.0F,0.0F,360.0F,128,Fade(Theme::AVISO,0.12F*a)); //halo delante del frente
+        DrawRing(c.pos,max(0.0F,r-4.0F),r,0.0F,360.0F,128,Fade(Theme::TEXTO,0.95F*a)); //borde brillante
+    }
+
+    //bola de fuego: capas de mas grande y rojo a mas pequeno y blanco
+    for(const auto& d:destellos){
+        float f=d.t/d.duracion;
+        float e=1.0F-(1.0F-f)*(1.0F-f);
+        float r=d.radioMax*(0.3F+0.7F*e);
+        float a=1.0F-f;
+        DrawCircleV(d.pos,r,Fade(Theme::PELIGRO,0.25F*a));
+        DrawCircleV(d.pos,r*0.75F,Fade(Theme::AVISO,0.35F*a));
+        DrawCircleV(d.pos,r*0.50F,Fade(Theme::MONEDA,0.55F*a));
+        DrawCircleV(d.pos,r*0.28F,Fade(Theme::TEXTO,0.95F*a));
+    }
+
+    for(const auto& o:ondas){
+        float f=o.t/o.duracion; //0 al nacer, 1 al terminar
+        float e=1.0F-(1.0F-f)*(1.0F-f); //sale rapido y frena
+        float r=o.radioIni+(o.radioMax-o.radioIni)*e;
+        float grosor=1.0F+6.0F*(1.0F-f);
+        DrawRing(o.pos,max(0.0F,r-grosor),r,0.0F,360.0F,48,Fade(o.color,0.8F*(1.0F-f)));
+    }
+
+    for(const auto& p:particulas){
+        float f=p.vida/p.total; //1 al nacer, 0 al morir
+        if(p.chispa){
+            Vector2 cola={p.pos.x-p.vel.x*0.04F,p.pos.y-p.vel.y*0.04F}; //estela contra la direccion de vuelo
+            DrawLineEx(cola,p.pos,p.tam*f+1.0F,Fade(p.color,f));
+        }else{
+            DrawCircleV(p.pos,p.tam*(0.4F+0.6F*f),Fade(p.color,f));
+        }
+    }
+
+    //la bolita se hincha y vibra antes de explotar
+    if(muriendo && !exploto){
+        float p=tMuerte/T_EXPLOSION;
+        float vib=3.0F*p;
+        Vector2 c={posMuerte.x+GetRandomValue(-100,100)/100.0F*vib,posMuerte.y+GetRandomValue(-100,100)/100.0F*vib};
+        Color col=((int)(tMuerte*20)%2) ? Theme::PELIGRO : Theme::JUGADOR;
+        DrawCircleV(c,radioMuerte*(1.0F+0.6F*p*p),col);
+    }
+}
+
+void Effects::dibujarOscuridad() const {
+    Rectangle a=Arena::area();
+    if(muriendo){
+        float f=min(1.0F,tMuerte/T_TOTAL);
+        DrawRectangleRec(a,Fade(Theme::VELO,OSCURIDAD_MAX*f));
+    }
+    if(flash>0) DrawRectangleRec(a,Fade(Theme::TEXTO,0.5F*flash/DURACION_FLASH));
+}
+
+Vector2 Effects::getTemblor() const {
+    if(temblor<=0) return {0.0F,0.0F};
+    float k=temblor/duracionTemblor;
+    float amp=amplitudTemblor*k*k; //cae rapido
+    return {GetRandomValue(-100,100)/100.0F*amp,GetRandomValue(-100,100)/100.0F*amp};
+}
+
+float Effects::getEscalaTiempo() const {
+    if(!muriendo) return 1.0F;
+    if(tMuerte<T_EXPLOSION){ //baja rapido hasta el minimo
+        float f=tMuerte/T_EXPLOSION;
+        float e=1.0F-(1.0F-f)*(1.0F-f);
+        return 1.0F-(1.0F-ESCALA_MIN)*e;
+    }
+    float f=min(1.0F,(tMuerte-T_EXPLOSION)/(T_TOTAL-T_EXPLOSION)); //y se recupera algo
+    return ESCALA_MIN+(ESCALA_FINAL-ESCALA_MIN)*f;
+}
+
+bool Effects::muerteTerminada() const {
+    return muriendo && tMuerte>=T_TOTAL;
+}
+
+void Effects::clear(){
+    particulas.clear();
+    ondas.clear();
+    destellos.clear();
+    choques.clear();
+    temblor=0.0F;
+    flash=0.0F;
+    muriendo=false;
+    exploto=false;
+    tMuerte=0.0F;
+}
+=== src/effects/Effects.h ===
+#pragma once
+#include <vector>
+#include "raylib.h"
+using namespace std;
+
+constexpr float VELOCIDAD_ONDA_BOMBA=4500.0F; //px/s a la que viaja la onda de una bomba
+
+class Effects{
+public:
+    void golpe(Vector2 pos,float radioJugador); //golpe normal: particulas, onda y temblor
+    void explosion(Vector2 pos); //bomba que explota: bola de fuego, chispas y onda expansiva
+    static float alcanceOnda(Vector2 pos); //distancia a la que la onda ya cubrio toda la zona de juego
+    void iniciarMuerte(Vector2 pos,float radioJugador);
+    void update(float dtReal);
+    void draw() const; //todo lo que va dentro de la camara
+    void dibujarOscuridad() const; //oscurecimiento y destello (sobre el area, sin camara)
+    Vector2 getTemblor() const; //desplazamiento de camara en este frame
+    float getEscalaTiempo() const; //1.0 normal, baja durante la muerte
+    bool muerteTerminada() const;
+    void clear();
+
+private:
+    struct Particula{
+        Vector2 pos;
+        Vector2 vel;
+        float vida;
+        float total;
+        float tam;
+        Color color;
+        bool chispa; //true = se dibuja como estela alargada
+    };
+
+    struct Onda{
+        Vector2 pos;
+        float t;
+        float radioIni;
+        float radioMax;
+        float duracion;
+        Color color;
+    };
+
+    struct Destello{ //bola de fuego
+        Vector2 pos;
+        float t;
+        float duracion;
+        float radioMax;
+    };
+
+    struct OndaChoque{ //onda expansiva que cruza la pantalla
+        Vector2 pos;
+        float t;
+        float radioMax;
+    };
+
+    vector<Particula> particulas;
+    vector<Onda> ondas;
+    vector<Destello> destellos;
+    vector<OndaChoque> choques;
+
+    float temblor=0.0F;
+    float duracionTemblor=0.3F;
+    float amplitudTemblor=0.0F;
+    float flash=0.0F;
+
+    bool muriendo=false;
+    bool exploto=false;
+    float tMuerte=0.0F;
+    Vector2 posMuerte={0.0F,0.0F};
+    float radioMuerte=0.0F;
+
+    void sacudir(float duracion,float amplitud);
+    void explotar();
+};
+=== src/entities/Coin.cpp ===
+#include "game/Theme.h"
+#include "entities/Coin.h"
+#include "game/Arena.h"
+
+Coin::Coin(float x,float y):pos{x,y},radio(12.0F){}
+
+void Coin::draw() const {
+    DrawCircleV(pos,radio,Theme::MONEDA);
+}
+
+bool Coin::collidesWith(Vector2 centro,float r) const {
+    return CheckCollisionCircles(pos,radio,centro,r);
+}
+
+void Coin::respawn(){
+    const Rectangle a=Arena::area();
+    const int margen=20;
+    pos.x=(float)GetRandomValue((int)a.x+margen,(int)(a.x+a.width)-margen);
+    pos.y=(float)GetRandomValue((int)a.y+margen,(int)(a.y+a.height)-margen);
+}
+=== src/entities/Coin.h ===
+#pragma once
+#include "raylib.h"
+
+class Coin{
+public:
+    Coin(float x,float y);
+
+    void draw() const;
+    bool collidesWith(Vector2 centro,float radio) const;
+    void respawn();
+
+private:
+    Vector2 pos;
+    float radio;
+};
+=== src/entities/Player.cpp ===
+#include "game/Theme.h"
+#include <cmath>
+#include <algorithm>
+#include "entities/Player.h"
+#include "game/Arena.h"
+using namespace std;
+
+namespace{
+    const int MAX_CARGAS=3;
+    const float TIEMPO_RECARGA=6.0F;
+    const float ALCANCE_TP=0.0F;
+    const float INVUL_TP=0.0F;
+    const int MAX_VIDAS=4;
+    const int VIDAS_INICIALES=3;
+    const float INVUL_GOLPE=1.5F;
+}
+
+Player::Player(float x,float y):pos{x,y},radio(14.0F),velocidad(360.0F),cargas(MAX_CARGAS),recarga(0.0F),invul(0.0F),vidas(VIDAS_INICIALES){}
+
+void Player::update(float dt){
+    Vector2 dir={0.0F,0.0F};
+    if(IsKeyDown(KEY_D)) dir.x++;
+    if(IsKeyDown(KEY_A)) dir.x--;
+    if(IsKeyDown(KEY_S)) dir.y++;
+    if(IsKeyDown(KEY_W)) dir.y--;
+
+    //Hacer que no se mueva mas rapido en diagonal
+    float largo=sqrt(dir.x*dir.x + dir.y*dir.y);
+    moviendo=(largo>0);
+    if(largo>0){
+        dir.x/=largo;
+        dir.y/=largo;
+    }
+
+    pos.x+=dir.x*velocidad*dt;
+    pos.y+=dir.y*velocidad*dt;
+
+    //Limites de la ventana
+    Rectangle a=Arena::area();
+    pos.x=clamp(pos.x,a.x+radio,a.x+a.width-radio);
+    pos.y=clamp(pos.y,a.y+radio,a.y+a.height-radio);
+
+    if(invul>0) invul-=dt;
+    if(cargas<MAX_CARGAS){
+        recarga+=dt;
+        if(recarga>=TIEMPO_RECARGA){
+            cargas++;
+            recarga=0.0F;
+        }
+    }
+    if(cargas>0 && IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(GetMousePosition(),Arena::area())){
+        pos=destinoTp();
+        cargas--;
+        invul=max(invul,INVUL_TP);
+    }
+}
+
+void Player::draw() const {
+    Color c=Theme::JUGADOR;
+    if(invul>0 && !((int)(invul*10)%2)) c=Fade(Theme::JUGADOR,0.35F); //parpadeo
+    if(cargas>0 && CheckCollisionPointRec(GetMousePosition(),Arena::area())){
+        if(ALCANCE_TP>0) DrawCircleLinesV(pos,ALCANCE_TP,Fade(Theme::TEXTO_SEC,0.5F));
+        DrawCircleLinesV(destinoTp(),radio,Fade(Theme::JUGADOR,0.6F));
+    }
+    DrawCircleV(pos,radio,c);
+}
+
+bool Player::esInvulnerable() const {
+    return invul>0;
+}
+
+void Player::recargarCargas(){
+    cargas=MAX_CARGAS;
+    recarga=0.0F;
+}
+
+Vector2 Player::destinoTp() const {
+    Rectangle a=Arena::area();
+    Vector2 m=GetMousePosition();
+    if(ALCANCE_TP>0){
+        float dx=m.x-pos.x;
+        float dy=m.y-pos.y;
+        float d=std::sqrt(dx*dx+dy*dy);
+        if(d>ALCANCE_TP){
+            m.x=pos.x+dx/d*ALCANCE_TP;
+            m.y=pos.y+dy/d*ALCANCE_TP;
+        }
+    }
+    m.x=std::clamp(m.x,a.x+radio,a.x+a.width-radio);
+    m.y=std::clamp(m.y,a.y+radio,a.y+a.height-radio);
+    return m;
+}
+
+bool Player::recibirGolpe(){
+    if(invul>0) return false;
+    vidas--;
+    invul=INVUL_GOLPE;
+    return true;
+}
+
+bool Player::estaMuerto() const {
+    return vidas<=0;
+}
+
+bool Player::ganarVida(){
+    if(vidas>=MAX_VIDAS) return false;
+    vidas++;
+    return true;
+}
+
+bool Player::seMueve() const {
+    return moviendo;
+}
+
+Vector2 Player::getPos() const {return pos;}
+float Player::getRadio() const {return radio;}
+int Player::getCargas() const {return cargas;}
+int Player::getMaxCargas() const {return MAX_CARGAS;}
+float Player::getProgresoRecarga() const {return (cargas>=MAX_CARGAS) ? 1.0F : recarga/TIEMPO_RECARGA;}
+int Player::getVidas() const {return vidas;}
+int Player::getMaxVidas() const {return MAX_VIDAS;}
+=== src/entities/Player.h ===
+#pragma once
+#include "raylib.h"
+
+class Player{
+public:
+    Player(float x,float t);
+
+    void update(float dt);
+    void draw() const;
+    
+    bool esInvulnerable() const;
+    void recargarCargas();
+    
+    bool recibirGolpe();
+    bool estaMuerto() const;
+    bool ganarVida();
+    bool seMueve() const;
+    
+    Vector2 getPos() const;
+    float getRadio() const;
+    int getCargas() const;
+    int getMaxCargas() const;
+    float getProgresoRecarga() const;
+    int getVidas() const;
+    int getMaxVidas() const;
+
+private:
+    Vector2 pos;
+    float radio;
+    float velocidad;
+
+    int cargas;
+    float recarga;
+    float invul;
+    bool moviendo=false;
+    int vidas;
+    Vector2 destinoTp() const;
+};
+=== src/game/Arena.h ===
+#pragma once
+#include "raylib.h"
+
+namespace Arena{
+    constexpr float HUD_ALTO=60.0F;
+
+    //Rectangulo donde se juega
+    inline Rectangle area(){
+        return {0.0F,HUD_ALTO,(float)GetScreenWidth(),(float)GetScreenHeight()-HUD_ALTO};
+    }
+
+    inline Vector2 centro(){
+        Rectangle a=area();
+        return {a.x+a.width/2,a.y+a.height/2};
+    }
+
+    //Punto aleatorio del area, a mas de "dist" de "evitar"
+    inline Vector2 puntoLibre(Vector2 evitar,float dist,float margen){
+        Rectangle a=area();
+        Vector2 p;
+        do{
+            p={(float)GetRandomValue((int)(a.x+margen),(int)(a.x+a.width-margen)),(float)GetRandomValue((int)(a.y+margen),(int)(a.y+a.height-margen))};
+        }while(CheckCollisionPointCircle(p,evitar,dist));
+        return p;
+    }
+}
+=== src/game/Context.h ===
+#pragma once
+#include "entities/Player.h"
+#include "game/Difficulty.h"
+#include "effects/Effects.h"
+
+//lo que los retos y power-ups pueden tocar
+struct Context{
+    Player& jugador;
+    const ConfigDificultad& cfg;
+    int nivel;
+    int& puntos;
+    Effects& efectos;
+};
+=== src/game/Difficulty.cpp ===
+#include <algorithm>
+#include "Difficulty.h"
+using namespace std;
+
+namespace{
+    const ConfigDificultad TABLA[NUM_DIFICULTADES]={
+        //nombre    vel     interv mult  bomba  vida   aviso combo  pesos
+        {"Fácil",   200.0F, 1.30F, 1.0F, 14.0F, 40.0F, 1.2F, 0.25F, {4,1,0,2}},
+        {"Normal",  260.0F, 1.10F, 1.5F, 11.0F, 45.0F, 0.9F, 0.50F, {3,2,1,3}},
+        {"Difícil", 320.0F, 0.90F, 2.0F, 9.0F,  50.0F, 0.7F, 0.75F, {3,3,3,3}},
+        {"Extremo", 380.0F, 0.70F, 3.0F, 7.0F,  60.0F, 0.6F, 1.00F, {2,3,4,4}},
+    };
+}
+
+const ConfigDificultad& getConfig(int indice){
+    return TABLA[clamp(indice,0,NUM_DIFICULTADES-1)];
+}
+
+float velocidadActual(const ConfigDificultad& c,int nivel,float rampa){
+    float factor=min(1.0F+0.06F*nivel,2.5F);
+    return c.velocidadBase*factor*rampa;
+}
+
+float intervaloActual(const ConfigDificultad& c,int nivel,float rampa){
+    float factor=min(1.0F+0.04F*nivel,2.0F);
+    return max(c.intervaloBase/(factor*rampa),0.35F);
+}
+
+int puntosPor(int puntosBase,const ConfigDificultad& c,int nivel){
+    return (int)(puntosBase*c.multPuntos*(nivel+1));
+}
+
+float avisoActual(const ConfigDificultad& c,int nivel){
+    return c.avisoBase*max(1.0F-0.03F*nivel,0.75F);
+}
+=== src/game/Difficulty.h ===
+#pragma once
+
+enum TipoObstaculo{
+    T_PARED_SIMPLE,
+    T_PARED_DOBLE,
+    T_PARED_DIAGONAL,
+    T_CIRCULO,
+    NUM_TIPOS
+};
+
+struct ConfigDificultad{
+    const char* nombre;
+    float velocidadBase;
+    float intervaloBase;
+    float multPuntos;
+    float bombaCada; //segundos entre bombas (0 = nunca)
+    float vidaCada; //segundos entre power-ups de vida (0 = nunca)
+    float avisoBase; //segundos de aviso antes de que salga un obstaculo
+    float probCombo; //probabilidad de que un nivel aleatorio combine 2 retos
+    int pesos[NUM_TIPOS];
+};
+
+constexpr int NUM_DIFICULTADES=4;
+
+float velocidadActual(const ConfigDificultad& c,int nivel,float rampa);
+float intervaloActual(const ConfigDificultad& c,int nivel,float rampa);
+int puntosPor(int puntosBase,const ConfigDificultad& c,int nivel);
+float avisoActual(const ConfigDificultad& c,int nivel);
+
+const ConfigDificultad& getConfig(int indice);
+=== src/game/Levels.cpp ===
+#include "game/Levels.h"
+#include "game/Difficulty.h"
+#include "raylib.h"
+using namespace std;
+
+namespace{
+    const float DURACION_ANUNCIO=2.5F;
+    const float DURACION_NIVEL=30.0F;
+    const float RAMPA_MIN=0.7F; //velocidad al empezar el nivel
+    const float RAMPA_MAX=1.3F; //velocidad al terminarlo
+    const int MAX_COMBO=2;
+
+    const int GUION[]={MOD_BOMBA,MOD_TENUE,MOD_OSCURO,MOD_CALOR};
+    const char* NOMBRES[]={"Bombas","Poca Visibilidad","Oscuridad","Sobrecalentamiento"};
+    const int N_MODS=sizeof(GUION)/sizeof(GUION[0]);
+
+    const int PROHIBIDOS[]={MOD_TENUE|MOD_OSCURO};
+
+    bool prohibido(int mods){
+        for(int p:PROHIBIDOS) if((mods&p)==p) return true;
+        return false;
+    }
+
+    //elige k retos distintos y compatibles entre si
+    int sortear(int k){
+        int mods=MOD_NINGUNO;
+        int intentos=0;
+        while(k>0 && intentos<30){
+            intentos++;
+            int m=GUION[GetRandomValue(0,N_MODS-1)];
+            if(mods&m) continue; //ya lo tenia
+            if(prohibido(mods|m)) continue;
+            mods|=m;
+            k--;
+        }
+        return mods;
+    }
+
+    int modsParaNivel(int nivel,int dificultad,int previo){
+        if(nivel<=0) return MOD_NINGUNO;
+        if(nivel<=N_MODS) return GUION[nivel-1];
+
+        //niveles aleatorios: uno solo, o un combo segun la probabilidad de la dificultad
+        int p=(int)(getConfig(dificultad).probCombo*1000);
+        int k=(GetRandomValue(0,999)<p) ? MAX_COMBO : 1;
+
+        int mods;
+        int intentos=0;
+        do{
+            mods=sortear(k);
+            intentos++;
+        }while(mods==previo && intentos<10); //no repetir lo del nivel anterior
+        return mods;
+    }
+}
+
+ControlNiveles::ControlNiveles():nivel(0),dificultad(0),mods(MOD_NINGUNO),fase(FaseNivel::Anuncio),tiempoFase(0.0F){}
+
+void ControlNiveles::reiniciar(int d){
+    nivel=0;
+    dificultad=d;
+    mods=modsParaNivel(0,d,MOD_NINGUNO);
+    fase=FaseNivel::Anuncio;
+    tiempoFase=0.0F;
+}
+
+void ControlNiveles::siguienteNivel(){
+    int previo=mods;
+    nivel++;
+    mods=modsParaNivel(nivel,dificultad,previo);
+    fase=FaseNivel::Anuncio;
+    tiempoFase=0.0F;
+}
+
+bool ControlNiveles::update(float dt,bool hayObstaculos){
+    tiempoFase+=dt;
+    switch(fase){
+        case FaseNivel::Anuncio:
+            if(tiempoFase>=DURACION_ANUNCIO){
+                fase=FaseNivel::Activo;
+                tiempoFase=0.0F;
+            }
+            break;
+        case FaseNivel::Activo:
+            if(tiempoFase>=DURACION_NIVEL){
+                fase=FaseNivel::Cierre;
+                tiempoFase=0.0F;
+            }
+            break;
+        case FaseNivel::Cierre:
+            if(!hayObstaculos){
+                siguienteNivel();
+                return true;
+            }
+            break;
+    }
+    return false;
+}
+
+bool ControlNiveles::puedeSpawnear() const{
+    return fase==FaseNivel::Activo;
+}
+
+string nombreMods(int mods){
+    if(mods==MOD_NINGUNO) return "Calentamiento";
+    string s;
+    for(int i=0;i<N_MODS;i++){
+        if(mods&GUION[i]){
+            if(!s.empty()) s+=" + ";
+            s+=NOMBRES[i];
+        }
+    }
+    return s;
+}
+
+int ControlNiveles::getNivel() const {return nivel;}
+int ControlNiveles::getMods() const {return mods;}
+FaseNivel ControlNiveles::getFase() const {return fase;}
+float ControlNiveles::getProgresoAnuncio() const {return (fase==FaseNivel::Anuncio) ? tiempoFase/DURACION_ANUNCIO : 1.0F;}
+float ControlNiveles::getRampa() const{
+    if(fase==FaseNivel::Anuncio) return RAMPA_MIN;
+    if(fase==FaseNivel::Cierre) return RAMPA_MAX;
+    return RAMPA_MIN+(RAMPA_MAX-RAMPA_MIN)*(tiempoFase/DURACION_NIVEL);
+}
+=== src/game/Levels.h ===
+#pragma once
+#include <string>
+
+//cada reto es un bit: se combinan con | y se consultan con &
+enum Modificador{
+    MOD_NINGUNO=0,
+    MOD_BOMBA=1<<0,
+    MOD_TENUE=1<<1,
+    MOD_OSCURO=1<<2,
+    MOD_CALOR=1<<3
+};
+
+enum class FaseNivel{Anuncio,Activo,Cierre};
+
+class ControlNiveles{
+public:
+    ControlNiveles();
+    void reiniciar(int dificultad);
+    bool update(float dt,bool hayObstaculos); //true el frame en que se supera un nivel
+    int getNivel() const;
+    int getMods() const;
+    FaseNivel getFase() const;
+    bool puedeSpawnear() const;
+    float getRampa() const;
+    float getProgresoAnuncio() const; //0.0 a 1.0
+private:
+    int nivel;
+    int dificultad;
+    int mods;
+    FaseNivel fase;
+    float tiempoFase;
+    void siguienteNivel();
+};
+
+std::string nombreMods(int mods);
+=== src/game/Random.h ===
+#pragma once
+#include "raylib.h"
+
+//multiplica t por un factor aleatorio entre 0.7 y 1.3
+inline float variar(float t){
+    return t*(0.7F+GetRandomValue(0,60)/100.0F);
+}
+=== src/game/Spawner.cpp ===
+#include <cmath>
+#include "game/Spawner.h"
+#include "obstacles/Wall.h"
+#include "obstacles/CircleObstacle.h"
+#include "obstacles/DiagonalWall.h"
+#include "game/Arena.h"
+using namespace std;
+
+namespace{
+    const float GROSOR_MIN=20.0F,GROSOR_MAX=40.0F;
+    const float LARGO_MIN=120.0F,LARGO_MAX=360.0F;
+    const float HUECO_MIN=100.0F,HUECO_MAX=180.0F;
+    const float RADIO_MIN=15.0F,RADIO_MAX=23.0F;
+
+    float aleatorio(float min,float max){
+        return min+(max-min)*GetRandomValue(0,1000)/1000.0F;
+    }
+
+    void paredSimple(ListaObstaculos& out,int lado,float vel){
+        const Rectangle a=Arena::area();
+        const float grosor=aleatorio(GROSOR_MIN,GROSOR_MAX);
+        const float largo=aleatorio(LARGO_MIN,LARGO_MAX);
+
+
+        float x=(float)GetRandomValue((int)a.x,(int)(a.x+a.width-largo));
+        float y=(float)GetRandomValue((int)a.y,(int)(a.y+a.height-largo));
+        float der=a.x+a.width;
+        float abajo=a.y+a.height;
+
+        switch(lado){
+            case 0: out.push_back(make_unique<Wall>(Rectangle{a.x-grosor,y,grosor,largo},Vector2{vel,0})); break;
+            case 1: out.push_back(make_unique<Wall>(Rectangle{der,y,grosor,largo},Vector2{-vel,0})); break;
+            case 2: out.push_back(make_unique<Wall>(Rectangle{x,a.y-grosor,largo,grosor},Vector2{0,vel})); break;
+            default: out.push_back(make_unique<Wall>(Rectangle{x,abajo,largo,grosor},Vector2{0,-vel})); break;
+        }
+    }
+
+    void paredDoble(ListaObstaculos& out,int lado,float vel){
+        const Rectangle a=Arena::area();
+        const float grosor=aleatorio(GROSOR_MIN,GROSOR_MAX);
+        const float hueco=aleatorio(HUECO_MIN,HUECO_MAX);
+
+        bool vertical=(!lado || lado==1);
+        float largoLado=vertical ? a.height : a.width;
+
+        float inicioHueco=(float)GetRandomValue(40,(int)(largoLado-hueco-40));
+        float finHueco=inicioHueco+hueco;
+
+        Rectangle r1,r2;
+        Vector2 v;
+        if(vertical){
+            float x=(!lado) ? a.x-grosor : a.x+a.width;
+            v={(!lado) ? vel : -vel,0.0F};
+            r1={x,a.y,grosor,inicioHueco};
+            r2={x,a.y+finHueco,grosor,largoLado-finHueco};
+        }else{
+            float y=(lado==2) ? a.y-grosor : a.y+a.height;
+            v={0.0F,(lado==2) ? vel : -vel};
+            r1={a.x,y,inicioHueco,grosor};
+            r2={a.x+finHueco,y,largoLado-finHueco,grosor};
+        }
+
+        out.push_back(make_unique<Wall>(r1,v));
+        out.push_back(make_unique<Wall>(r2,v));
+    }
+
+    void paredDiagonal(ListaObstaculos& out,int lado,float vel){
+        const Rectangle a=Arena::area();
+        const Vector2 tam={aleatorio(LARGO_MIN,LARGO_MAX),aleatorio(GROSOR_MIN,GROSOR_MAX)};
+        const float R=0.5F*sqrt(tam.x*tam.x + tam.y*tam.y);
+
+        float x=(float)GetRandomValue((int)a.x,(int)(a.x+a.width));
+        float y=(float)GetRandomValue((int)a.y,(int)(a.y+a.height));
+        float midX=a.x+a.width/2;
+        float midY=a.y+a.height/2;
+
+        //apunta al centro de la pantalla para que no se salga de inmediato
+        Vector2 pos,dir;
+        switch(lado){
+            case 0: pos={a.x-R,y}; dir={1,(y<midY) ? 1.0F : -1.0F}; break;
+            case 1: pos={a.x+a.width+R,y}; dir={-1,(y<midY) ? 1.0F : -1.0F}; break;
+            case 2: pos={x,a.y-R}; dir={(x<midX) ? 1.0F : -1.0F,1}; break;
+            default: pos={x,a.y+a.height+R}; dir={(x<midX) ? 1.0F : -1.0F,-1}; break;
+        }
+
+        Vector2 v={dir.x*vel*0.7071F,dir.y*vel*0.7071F};
+
+        float anguloMov=atan2(v.y,v.x)*RAD2DEG;
+        float angulo=anguloMov+90.0F+(float)GetRandomValue(-30,30);
+
+        out.push_back(make_unique<DiagonalWall>(pos,tam,angulo,v));
+    }
+
+    void circuloOnda(ListaObstaculos& out,int lado,float vel){
+        const Rectangle a=Arena::area();
+        const float r=aleatorio(RADIO_MIN,RADIO_MAX);
+        float x=(float)GetRandomValue((int)a.x,(int)(a.x+a.width));
+        float y=(float)GetRandomValue((int)a.y,(int)(a.y+a.height));
+
+        float amplitud=(float)GetRandomValue(40,120);
+        float frecuencia=GetRandomValue(20,40)/10.0F; //entre 2.0 y 4.0 rad/s
+
+        Vector2 pos,v;
+        switch(lado){
+            case 0: pos={a.x-r,y}; v={vel,0}; break;
+            case 1: pos={a.x+a.width+r,y}; v={-vel,0}; break;
+            case 2: pos={x,a.y-r}; v={0,vel}; break;
+            default: pos={x,a.y+a.height+r}; v={0,-vel}; break;
+        }
+        out.push_back(make_unique<CircleObstacle>(pos,r,v,amplitud,frecuencia));
+    }
+
+    int elegirTipo(const ConfigDificultad& c){
+        int total=0;
+        for(int p:c.pesos) total+=p;
+
+        int r=GetRandomValue(0,total-1);
+        for(int i=0;i<NUM_TIPOS;i++){
+            if(r<c.pesos[i]) return i;
+            r-=c.pesos[i];
+        }
+        return 0;
+    }
+}
+
+void spawnObstaculos(ListaObstaculos& out,float velocidad,const ConfigDificultad& cfg){
+    int lado=GetRandomValue(0,3); //0=izq, 1=der, 2=arriba, 3=abajo
+    float vel=velocidad*aleatorio(0.8F,1.3F);
+    switch(elegirTipo(cfg)){
+        case T_PARED_SIMPLE: paredSimple(out,lado,vel); break;
+        case T_PARED_DOBLE: paredDoble(out,lado,vel); break;
+        case T_PARED_DIAGONAL: paredDiagonal(out,lado,vel); break;
+        default: circuloOnda(out,lado,vel); break;
+    }
+}
+
+Pickup crearPickup(TipoPickup tipo,Vector2 evitar){
+    Rectangle a=Arena::area();
+    const float m=40.0F;
+    Vector2 p;
+    do{
+        p={(float)GetRandomValue((int)(a.x+m),(int)(a.x+a.width-m)),(float)GetRandomValue((int)(a.y+m),(int)(a.y+a.height-m))};
+    }while(CheckCollisionPointCircle(p,evitar,200.0F)); //nunca encima del jugador
+    return Pickup(tipo,p);
+}
+=== src/game/Spawner.h ===
+#pragma once
+#include <memory>
+#include <vector>
+#include "obstacles/Obstacle.h"
+#include "Difficulty.h"
+#include "powerups/Pickup.h"
+using namespace std;
+using ListaObstaculos=vector<unique_ptr<Obstacle>>;
+
+void spawnObstaculos(ListaObstaculos& out,float velocidad,const ConfigDificultad& cfg);
+Pickup crearPickup(TipoPickup tipo,Vector2 evitar);
+=== src/game/SpawnQueue.cpp ===
+#include "game/Theme.h"
+#include <algorithm>
+#include <cmath>
+#include "game/SpawnQueue.h"
+#include "game/Arena.h"
+using namespace std;
+
+void SpawnQueue::add(ListaObstaculos& nuevos,float retraso){
+    for(auto& o:nuevos) lista.push_back(Pendiente{move(o),retraso,retraso});
+    nuevos.clear();
+}
+
+void SpawnQueue::update(float dt,ListaObstaculos& activos){
+    for(auto it=lista.begin();it!=lista.end();){
+        it->restante-=dt;
+        if(it->restante<=0){
+            activos.push_back(move(it->obs));
+            it=lista.erase(it);
+        }else it++;
+    }
+}
+
+void SpawnQueue::draw() const {
+    const Rectangle a=Arena::area();
+    const float ax2=a.x+a.width;
+    const float ay2=a.y+a.height;
+    const float tol=1.0F;
+    const float asomo=120.0F; //cuanto de la silueta se muestra dentro del area
+
+    for(const auto& p:lista){
+        Rectangle b=p.obs->getBounds();
+        float urgencia=1.0F-p.restante/p.total; //0 al empezar, 1 al salir
+        float pulso=0.5F+0.5F*sin((float)GetTime()*(8.0F+14.0F*urgencia));
+        Color c=p.obs->getColor();
+
+        Vector2 desp;
+        if(b.x+b.width<=a.x+tol) desp={(a.x-(b.x+b.width))+min(b.width,asomo),0.0F}; //izquierda
+        else if(b.x>=ax2-tol) desp={-((b.x-ax2)+min(b.width,asomo)),0.0F}; //derecha
+        else if(b.y+b.height<=a.y+tol) desp={0.0F,(a.y-(b.y+b.height))+min(b.height,asomo)}; //arriba
+        else desp={0.0F,-((b.y-ay2)+min(b.height,asomo))}; //abajo
+
+        //relleno del color de su tipo, contorno de aviso
+        p.obs->drawGhost(desp,Fade(c,0.30F+0.25F*pulso),Fade(Theme::AVISO,0.95F));
+    }
+}
+
+bool SpawnQueue::empty() const {return lista.empty();}
+void SpawnQueue::clear(){lista.clear();}
+=== src/game/SpawnQueue.h ===
+#pragma once
+#include <memory>
+#include <vector>
+#include "game/Spawner.h"
+using namespace std;
+
+class SpawnQueue{
+public:
+    void add(ListaObstaculos& nuevos,float retraso); //mueve los obstaculos de "nuevos" a la cola
+    void update(float dt,ListaObstaculos& activos); //los que cumplieron su aviso pasan a "activos"
+    void draw() const;
+    bool empty() const;
+    void clear();
+
+private:
+    struct Pendiente{
+        unique_ptr<Obstacle> obs;
+        float restante;
+        float total;
+    };
+    vector<Pendiente> lista;
+};
+=== src/game/Theme.h ===
+#pragma once
+#include "raylib.h"
+
+namespace Theme{
+    //escenario
+    constexpr Color FONDO={30,34,44,255};
+    constexpr Color REJILLA={42,48,64,255};
+    constexpr Color HUD={16,19,27,255};
+    constexpr Color TEXTO={225,232,245,255};
+    constexpr Color TEXTO_SEC={138,148,171,255};
+    constexpr Color VELO={5,6,12,255}; //oscuridad del reto y de la muerte
+    constexpr Color PANEL={40,47,62,255}; //boton en reposo
+    constexpr Color BORDE={72,82,106,255}; //contorno en reposo
+
+    //jugador y obstaculos
+    constexpr Color JUGADOR={0,229,255,255};
+    constexpr Color MURO={180,75,255,255};
+    constexpr Color CIRCULO={255,60,180,255};
+
+    //peligros, premios y avisos
+    constexpr Color PELIGRO={255,59,48,255};
+    constexpr Color CUERPO_BOMBA={14,16,22,255};
+    constexpr Color VIDA_HUD={255,77,90,255};
+    constexpr Color MONEDA={255,225,77,255};
+    constexpr Color POWERUP={57,255,130,255};
+    constexpr Color AVISO={255,159,28,255};
+
+    //calor
+    constexpr Color CALOR_FRIO={255,225,77,255};
+    constexpr Color CALOR_MEDIO={255,159,28,255};
+    constexpr Color CALOR_MAX={255,59,48,255};
+}
+=== src/main.cpp ===
+#include <memory>
+#include <vector>
+#include <algorithm>
+#include "raylib.h"
+#include "entities/Player.h"
+#include "entities/Coin.h"
+#include "game/Spawner.h"
+#include "game/Arena.h"
+#include "game/Difficulty.h"
+#include "game/Levels.h"
+#include "game/Context.h"
+#include "challenges/ChallengeManager.h"
+#include "powerups/PowerUpManager.h"
+#include "ui/Hud.h"
+#include "game/SpawnQueue.h"
+#include "effects/Effects.h"
+#include "game/Theme.h"
+using namespace std;
+
+enum class Estado{Menu,Jugando,Muriendo,GameOver};
+
+int main(){
+    InitWindow(800,600,"Juego en C++");
+
+    int monitor=GetCurrentMonitor();
+    SetWindowSize(GetMonitorWidth(monitor),GetMonitorHeight(monitor));
+    ToggleFullscreen();
+
+    SetTargetFPS(60);
+
+    Vector2 c=Arena::centro();
+    Player jugador(c.x,c.y);
+    Coin moneda(200,200);
+    vector<unique_ptr<Obstacle>> obstaculos;
+    ControlNiveles niveles;
+    ChallengeManager retos;
+    PowerUpManager powerups;
+    SpawnQueue cola;
+    Effects efectos;
+
+    Estado estado=Estado::Menu;
+    int seleccion=0; //boton marcado en el menu
+    int dificultad=0;
+    int puntos=0;
+    float temporizador=0.0F;
+    float tiempoJugado=0.0F;
+    float tMensaje=0.0F;
+
+    auto nuevaPartida=[&](){
+        obstaculos.clear();
+        cola.clear();
+        efectos.clear();
+        Vector2 centro=Arena::centro();
+        jugador=Player(centro.x,centro.y);
+        moneda.respawn();
+        puntos=0;
+        temporizador=0.0F;
+        tiempoJugado=0.0F;
+        estado=Estado::Jugando;
+        niveles.reiniciar(dificultad);
+        const ConfigDificultad& c0=getConfig(dificultad);
+        retos.configurar(niveles.getMods(),c0);
+        powerups.reiniciar(c0);
+    };
+
+    while(!WindowShouldClose()){
+        float dt=GetFrameTime();
+        if(estado!=Estado::Menu) efectos.update(dt);
+        const ConfigDificultad& cfg=getConfig(dificultad);
+        int nivel=niveles.getNivel();
+        Context ctx{jugador,cfg,nivel,puntos,efectos};
+
+        switch(estado){
+            case Estado::Menu:{
+                Vector2 md=GetMouseDelta();
+                int bajo=botonBajoMouse();
+                if((md.x!=0 || md.y!=0) && bajo>=0) seleccion=bajo; //el raton solo manda cuando se mueve
+                if(IsKeyPressed(KEY_S) || IsKeyPressed(KEY_DOWN)) seleccion=(seleccion+1)%NUM_DIFICULTADES;
+                if(IsKeyPressed(KEY_W) || IsKeyPressed(KEY_UP)) seleccion=(seleccion+NUM_DIFICULTADES-1)%NUM_DIFICULTADES;
+
+                int elegido=-1;
+                if(IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE)) elegido=seleccion;
+                if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && bajo>=0) elegido=bajo;
+                for(int i=0;i<NUM_DIFICULTADES;i++){
+                    if(IsKeyPressed(KEY_ONE+i)) elegido=i;
+                }
+                if(elegido>=0){
+                    seleccion=elegido;
+                    dificultad=elegido;
+                    nuevaPartida();
+                }
+                break;
+            }
+
+            case Estado::Jugando:{
+                int vidasAntes=jugador.getVidas();
+                tiempoJugado+=dt;
+                jugador.update(dt);
+
+                if(moneda.collidesWith(jugador.getPos(),jugador.getRadio())){
+                    puntos+=puntosPor(50,cfg,nivel);
+                    moneda.respawn();
+                }
+
+                if(niveles.puedeSpawnear()){
+                    temporizador+=dt;
+                    float rampa=niveles.getRampa();
+                    if(temporizador>=intervaloActual(cfg,nivel,rampa)){
+                        temporizador=0.0F;
+                        ListaObstaculos nuevos;
+                        spawnObstaculos(nuevos,velocidadActual(cfg,nivel,rampa),cfg);
+                        cola.add(nuevos,avisoActual(cfg,nivel));
+                    }
+                }
+                cola.update(dt,obstaculos);
+
+                for(auto it=obstaculos.begin();it!=obstaculos.end();){
+                    (*it)->update(dt);
+                    if((*it)->collidesWith(jugador.getPos(),jugador.getRadio())) jugador.recibirGolpe();
+
+                    if((*it)->isOffscreen()){
+                        puntos+=puntosPor((*it)->getPoints(),cfg,nivel);
+                        it=obstaculos.erase(it);
+                    }else it++;
+                }
+
+                retos.update(dt,niveles.puedeSpawnear(),ctx);
+                if(jugador.getVidas()<vidasAntes){
+                    powerups.alRecibirGolpe();
+                    efectos.golpe(jugador.getPos(),jugador.getRadio());
+                }
+                powerups.update(dt,niveles.puedeSpawnear(),ctx);
+
+                if(niveles.update(dt,!obstaculos.empty() || !cola.empty())){
+                    puntos+=puntosPor(500,cfg,niveles.getNivel()-1); //bonus por el nivel que acabas de superar
+                    temporizador=0.0F;
+                    retos.configurar(niveles.getMods(),cfg);
+                    powerups.alCambiarNivel();
+                }
+
+                if(jugador.estaMuerto()){
+                    estado=Estado::Muriendo;
+                    efectos.iniciarMuerte(jugador.getPos(),jugador.getRadio());
+                }
+                break;
+            }
+
+            case Estado::Muriendo:{
+                float dtM=dt*efectos.getEscalaTiempo(); //el mundo sigue, pero en camara lenta
+                cola.update(dtM,obstaculos);
+                for(auto& o:obstaculos) o->update(dtM);
+                if(efectos.muerteTerminada()){
+                    estado=Estado::GameOver;
+                    tMensaje=0.0F;
+                }
+                break;
+            }
+
+            case Estado::GameOver:
+                tMensaje+=dt;
+                if(IsKeyPressed(KEY_R)) nuevaPartida();
+                if(IsKeyPressed(KEY_M)){
+                    seleccion=dificultad; //el menu vuelve marcando la que jugabas
+                    estado=Estado::Menu;
+                }
+                break;
+        }
+
+        BeginDrawing();
+            ClearBackground(Theme::FONDO);
+
+            if(estado==Estado::Menu) dibujarMenu(seleccion);
+            else{
+                Rectangle a=Arena::area();
+                Camera2D cam={efectos.getTemblor(),{0.0F,0.0F},0.0F,1.0F};
+                BeginScissorMode((int)a.x,(int)a.y,(int)a.width,(int)a.height);
+                    BeginMode2D(cam);
+                        dibujarRejilla();
+                        moneda.draw();
+                        for(const auto& o:obstaculos) o->draw(retos.alfaObstaculo(o->distanciaA(jugador.getPos())));
+                        if(estado==Estado::Jugando) jugador.draw();
+                        retos.dibujarCapa(ctx); //oscuridad
+                        retos.dibujarMundo(ctx); //bombas y barra de calor: se ven sobre la oscuridad
+                        powerups.dibujar(jugador);
+                    EndMode2D();
+                    if(estado==Estado::Jugando){
+                        retos.dibujarAlerta(ctx); //resplandor de la bomba
+                        cola.draw(); //avisos de los bordes
+                    }
+                    efectos.dibujarOscuridad(); //oscuridad de la muerte
+                    BeginMode2D(cam);
+                        efectos.draw();
+                    EndMode2D();
+                EndScissorMode();
+
+                dibujarHud(puntos,cfg.nombre,nivel,tiempoJugado);
+                dibujarCargas(jugador);
+                dibujarVidas(jugador);
+                retos.dibujarHud(ctx);
+                if(estado==Estado::Jugando && niveles.getFase()==FaseNivel::Anuncio) dibujarAnuncio(nivel,nombreMods(niveles.getMods()).c_str(),niveles.getProgresoAnuncio());
+
+                if(estado==Estado::GameOver){
+                    float alfa=min(1.0F,tMensaje/0.6F);
+                    Vector2 m=Arena::centro();
+                    const char* t1="PERDISTE";
+                    const char* t2="R: reiniciar  M: menú";
+                    DrawText(t1,(int)m.x-MeasureText(t1,60)/2,(int)m.y-60,60,Fade(Theme::PELIGRO,alfa));
+                    DrawText(t2,(int)m.x-MeasureText(t2,24)/2,(int)m.y+10,24,Fade(Theme::TEXTO,alfa));
+                }
+            }
+        EndDrawing();
+    }
+    retos.limpiar();
+    CloseWindow();
+    return 0;
+}
+=== src/obstacles/CircleObstacle.cpp ===
+#include "game/Theme.h"
+#include <cmath>
+#include "obstacles/CircleObstacle.h"
+#include "game/Arena.h"
+using namespace std;
+
+CircleObstacle::CircleObstacle(Vector2 p,float r,Vector2 v,float amp,float frec):Obstacle(15),base(p),pos(p),radio(r),vel(v),perp{0.0F,0.0F},amplitud(amp),frecuencia(frec),tiempo(0.0F){
+    float largo=sqrt(vel.x*vel.x + vel.y*vel.y);
+    if(largo>0) perp={-vel.y/largo,vel.x/largo};
+}
+
+void CircleObstacle::update(float dt){
+    tiempo+=dt;
+    base.x+=vel.x*dt;
+    base.y+=vel.y*dt;
+
+    float desvio=amplitud*sin(frecuencia*tiempo);
+    pos.x=base.x+perp.x*desvio;
+    pos.y=base.y+perp.y*desvio;
+}
+
+void CircleObstacle::draw(float alfa) const {
+    DrawCircleV(pos,radio,Fade(Theme::CIRCULO,alfa));
+}
+
+bool CircleObstacle::collidesWith(Vector2 centro,float r) const {
+    return CheckCollisionCircles(pos,radio,centro,r);
+}
+
+bool CircleObstacle::isOffscreen() const {
+    Rectangle a=Arena::area();
+    if(vel.x>0 && pos.x-radio>a.x+a.width) return true;
+    if(vel.x<0 && pos.x+radio<a.x) return true;
+    if(vel.y>0 && pos.y-radio>a.y+a.height) return true;
+    if(vel.y<0 && pos.y+radio<a.y) return true;
+    return false;
+}
+
+void CircleObstacle::drawGhost(Vector2 d,Color relleno,Color borde) const {
+    Vector2 c={pos.x+d.x,pos.y+d.y};
+    DrawCircleV(c,radio,relleno);
+    DrawRing(c,radio-2,radio,0.0F,360.0F,32,borde);
+}
+
+Rectangle CircleObstacle::getBounds() const {return {pos.x-radio,pos.y-radio,radio*2,radio*2};}
+Color CircleObstacle::getColor() const {return Theme::CIRCULO;}
+=== src/obstacles/CircleObstacle.h ===
+#pragma once
+#include "obstacles/Obstacle.h"
+
+class CircleObstacle:public Obstacle{
+public:
+    CircleObstacle(Vector2 pos,float radio,Vector2 vel,float amplitud,float frecuencia);
+
+    void update(float dt) override;
+    void draw(float alfa) const override;
+    bool collidesWith(Vector2 centro,float radio) const override;
+    bool isOffscreen() const override;
+    void drawGhost(Vector2 desplazamiento,Color relleno,Color borde) const override;
+    Rectangle getBounds() const override;
+    Color getColor() const override;
+
+private:
+    Vector2 base; //linea por la que avanza
+    Vector2 pos; //posicion real (base + ondulacion)
+    float radio;
+    Vector2 vel;
+    Vector2 perp; //direccion perpendicular a velocidad
+    float amplitud; //desviacion hacia los lados
+    float frecuencia; //cuanto ondula (rad/s)
+    float tiempo;
+};
+=== src/obstacles/DiagonalWall.cpp ===
+#include "game/Theme.h"
+#include <cmath>
+#include "obstacles/DiagonalWall.h"
+#include "game/Arena.h"
+using namespace std;
+
+DiagonalWall::DiagonalWall(Vector2 c,Vector2 t,float a,Vector2 v):Obstacle(20),centro(c),tam(t),angulo(a),vel(v),radioEnvolvente(0.5F*sqrt(t.x*t.x + t.y*t.y)){}
+
+void DiagonalWall::update(float dt){
+    centro.x+=vel.x*dt;
+    centro.y+=vel.y*dt;
+}
+
+void DiagonalWall::draw(float alfa) const {
+    DrawRectanglePro(Rectangle{centro.x,centro.y,tam.x,tam.y},Vector2{tam.x/2,tam.y/2},angulo,Fade(Theme::MURO,alfa));
+}
+
+bool DiagonalWall::collidesWith(Vector2 cj,float radio) const {
+    float rad=-angulo*DEG2RAD;
+    float dx=cj.x-centro.x;
+    float dy=cj.y-centro.y;
+    
+    Vector2 local={dx*cos(rad) - dy*sin(rad),dx*sin(rad) + dy*cos(rad)};
+    
+    Rectangle rectLocal={-tam.x/2,-tam.y/2,tam.x,tam.y};
+    return CheckCollisionCircleRec(local,radio,rectLocal);
+}
+
+bool DiagonalWall::isOffscreen() const {
+    Rectangle a=Arena::area();
+    float R=radioEnvolvente;
+    if(vel.x>0 && centro.x-R>a.x+a.width) return true;
+    if(vel.x<0 && centro.x+R<a.x) return true;
+    if(vel.y>0 && centro.y-R>a.y+a.height) return true;
+    if(vel.y<0 && centro.y+R<a.y) return true;
+    return false;
+}
+
+void DiagonalWall::drawGhost(Vector2 d,Color relleno,Color borde) const {
+    Vector2 c={centro.x+d.x,centro.y+d.y};
+    DrawRectanglePro(Rectangle{c.x,c.y,tam.x,tam.y},Vector2{tam.x/2,tam.y/2},angulo,relleno);
+    
+    float rad=angulo*DEG2RAD;
+    float cs=cos(rad);
+    float sn=sin(rad);
+    const float sx[4]={-1,1,1,-1};
+    const float sy[4]={-1,-1,1,1};
+    Vector2 p[4];
+    for(int i=0;i<4;i++){
+        float lx=sx[i]*tam.x/2;
+        float ly=sy[i]*tam.y/2;
+        p[i]={c.x+lx*cs-ly*sn,c.y+lx*sn+ly*cs};
+    }
+    for(int i=0;i<4;i++) DrawLineEx(p[i],p[(i+1)%4],2.0F,borde);
+}
+Rectangle DiagonalWall::getBounds() const {
+    float rad=angulo*DEG2RAD;
+    float c=fabs(cos(rad));
+    float s=fabs(sin(rad));
+    float hx=tam.x/2*c+tam.y/2*s;
+    float hy=tam.x/2*s+tam.y/2*c;
+    return {centro.x-hx,centro.y-hy,hx*2,hy*2};
+}
+
+Color DiagonalWall::getColor() const {return Theme::MURO;}
+=== src/obstacles/DiagonalWall.h ===
+#pragma once
+#include "obstacles/Obstacle.h"
+
+class DiagonalWall:public Obstacle{
+public:
+    DiagonalWall(Vector2 centro,Vector2 tam,float angulo,Vector2 vel);
+
+    void update(float dt) override;
+    void draw(float alfa) const override;
+    bool collidesWith(Vector2 centroJugador,float radio) const override;
+    bool isOffscreen() const override;
+    void drawGhost(Vector2 desplazamiento,Color relleno,Color borde) const override;
+    Rectangle getBounds() const override;
+    Color getColor() const override;
+
+private:
+    Vector2 centro;
+    Vector2 tam; //ancho y alto
+    float angulo; //grados
+    Vector2 vel;
+    float radioEnvolvente; //circulo que contiene todo el muro
+};
+=== src/obstacles/Obstacle.h ===
+#pragma once
+#include <algorithm>
+#include <cmath>
+#include "raylib.h"
+using namespace std;
+
+class Obstacle{
+public:
+    virtual ~Obstacle()=default;
+
+    virtual void update(float dt)=0;
+    virtual void draw(float alfa) const=0;
+    virtual bool collidesWith(Vector2 centro,float radio) const=0;
+    virtual bool isOffscreen() const=0;
+    virtual Rectangle getBounds() const=0;
+    virtual Color getColor() const=0; //color propio segun su tipo
+    virtual void drawGhost(Vector2 desplazamiento,Color relleno,Color borde) const=0; //silueta para el aviso
+
+    int getPoints() const {return points;}
+
+    float distanciaA(Vector2 p) const {
+        Rectangle b=getBounds();
+        float dx=max({b.x-p.x,0.0F,p.x-(b.x+b.width)});
+        float dy=max({b.y-p.y,0.0F,p.y-(b.y+b.height)});
+        return sqrt(dx*dx+dy*dy);
+    }
+
+protected:
+    explicit Obstacle(int pts):points(pts){}
+    int points;
+};
+=== src/obstacles/Wall.cpp ===
+#include "game/Theme.h"
+#include "obstacles/Wall.h"
+#include "game/Arena.h"
+
+Wall::Wall(Rectangle r,Vector2 v):Obstacle(10),rect(r),vel(v){}
+
+void Wall::update(float dt){
+    rect.x+=vel.x*dt;
+    rect.y+=vel.y*dt;
+}
+
+void Wall::draw(float alfa) const {
+    DrawRectangleRec(rect,Fade(Theme::MURO,alfa));
+}
+
+bool Wall::collidesWith(Vector2 centro,float radio) const {
+    return CheckCollisionCircleRec(centro,radio,rect);
+}
+
+bool Wall::isOffscreen() const {
+    Rectangle a=Arena::area();
+    if(vel.x>0 && rect.x>a.x+a.width) return true;
+    if(vel.x<0 && rect.x+rect.width<a.x) return true;
+    if(vel.y>0 && rect.y>a.y+a.height) return true;
+    if(vel.y<0 && rect.y+rect.height<a.y) return true;
+    return false;
+}
+
+void Wall::drawGhost(Vector2 d,Color relleno,Color borde) const {
+    Rectangle r={rect.x+d.x,rect.y+d.y,rect.width,rect.height};
+    DrawRectangleRec(r,relleno);
+    DrawRectangleLinesEx(r,2.0F,borde);
+}
+
+Rectangle Wall::getBounds() const {return rect;}
+Color Wall::getColor() const {return Theme::MURO;}
+=== src/obstacles/Wall.h ===
+#pragma once
+#include "obstacles/Obstacle.h"
+
+class Wall:public Obstacle{
+public:
+    Wall(Rectangle rect,Vector2 vel);
+
+    void update(float dt) override;
+    void draw(float alfa) const override;
+    bool collidesWith(Vector2 centro,float radio) const override;
+    bool isOffscreen() const override;
+    void drawGhost(Vector2 desplazamiento,Color relleno,Color borde) const override;
+    Rectangle getBounds() const override;
+    Color getColor() const override;
+
+private:
+    Rectangle rect;
+    Vector2 vel;
+};
+=== src/powerups/Pickup.cpp ===
+#include "powerups/Pickup.h"
+#include "game/Theme.h"
+
+Pickup::Pickup(TipoPickup t,Vector2 p):tipo(t),pos(p),radio(14.0F),duracion(12.0F),restante(duracion){}
+
+void Pickup::update(float dt){
+    restante-=dt;
+}
+
+void Pickup::draw() const {
+    float f=restante/duracion;
+    Color c=Theme::POWERUP;
+    if(f<0.3F && (int)(restante*8)%2==0) c=Fade(c,0.3F);
+    DrawCircleV(pos,radio,c);
+    DrawRing(pos,radio+4,radio+7,-90.0F,-90.0F+360.0F*f,32,Fade(Theme::POWERUP,0.9F));
+    DrawRectangle((int)pos.x-2,(int)pos.y-8,4,16,Theme::HUD);
+    DrawRectangle((int)pos.x-8,(int)pos.y-2,16,4,Theme::HUD);
+}
+
+bool Pickup::collidesWith(Vector2 centro,float r) const {
+    return CheckCollisionCircles(pos,radio,centro,r);
+}
+
+bool Pickup::haExpirado() const {return restante<=0;}
+TipoPickup Pickup::getTipo() const {return tipo;}
+=== src/powerups/Pickup.h ===
+#pragma once
+#include "raylib.h"
+
+enum TipoPickup{
+    P_VIDA
+    //futuros: P_ESCUDO, P_IMAN...
+};
+
+const float TIEMPO_DESAFIO=8.0F;
+
+class Pickup{
+public:
+    Pickup(TipoPickup tipo,Vector2 pos);
+    void update(float dt);
+    void draw() const;
+    bool collidesWith(Vector2 centro,float radio) const;
+    bool haExpirado() const;
+    TipoPickup getTipo() const;
+
+private:
+    TipoPickup tipo;
+    Vector2 pos;
+    float radio;
+    float duracion;
+    float restante;
+};
+=== src/powerups/PowerUpManager.cpp ===
+#include "game/Theme.h"
+#include "powerups/PowerUpManager.h"
+#include "game/Arena.h"
+#include "game/Random.h"
+
+void PowerUpManager::reiniciar(const ConfigDificultad& cfg){
+    pickups.clear();
+    desafio=0.0F;
+    proxVida=variar(cfg.vidaCada);
+}
+
+void PowerUpManager::alCambiarNivel(){
+    pickups.clear();
+}
+
+void PowerUpManager::alRecibirGolpe(){
+    desafio=0.0F;
+}
+
+void PowerUpManager::update(float dt,bool activo,Context& ctx){
+    //aparicion
+    if(activo && ctx.cfg.vidaCada>0){
+        proxVida-=dt;
+        if(proxVida<=0){
+            bool hayVida=false;
+            for(const auto& p:pickups) if(p.getTipo()==P_VIDA) hayVida=true;
+            if(!hayVida && desafio<=0 && ctx.jugador.getVidas()<ctx.jugador.getMaxVidas())
+                pickups.push_back(Pickup(P_VIDA,Arena::puntoLibre(ctx.jugador.getPos(),200.0F,40.0F)));
+            proxVida=variar(ctx.cfg.vidaCada);
+        }
+    }
+
+    //recoger o caducar
+    for(auto it=pickups.begin();it!=pickups.end();){
+        it->update(dt);
+        if(it->collidesWith(ctx.jugador.getPos(),ctx.jugador.getRadio())){
+            switch(it->getTipo()){
+                case P_VIDA: desafio=TIEMPO_DESAFIO; break;
+            }
+            it=pickups.erase(it);
+        }else if(it->haExpirado()) it=pickups.erase(it);
+        else it++;
+    }
+
+    //vida
+    if(desafio>0){
+        desafio-=dt;
+        if(desafio<=0){
+            desafio=0.0F;
+            if(!ctx.jugador.ganarVida()) ctx.puntos+=puntosPor(200,ctx.cfg,ctx.nivel); //ya tenia el maximo
+        }
+    }
+}
+
+void PowerUpManager::dibujar(const Player& jugador) const {
+    for(const auto& p:pickups) p.draw();
+    if(desafio>0) DrawRing(jugador.getPos(),jugador.getRadio()+5,jugador.getRadio()+8,-90.0F,-90.0F+360.0F*(desafio/TIEMPO_DESAFIO),32,Theme::POWERUP);
+}
+=== src/powerups/PowerUpManager.h ===
+#pragma once
+#include <vector>
+#include "powerups/Pickup.h"
+#include "game/Context.h"
+
+class PowerUpManager{
+public:
+    void reiniciar(const ConfigDificultad& cfg);
+    void alCambiarNivel();
+    void alRecibirGolpe(); //cancela la vida
+    void update(float dt,bool activo,Context& ctx);
+    void dibujar(const Player& jugador) const;
+
+private:
+    std::vector<Pickup> pickups;
+    float proxVida=0.0F;
+    float desafio=0.0F; //segundos que quedan para obtener vida (0=inactivo)
+};
+=== src/ui/Hud.cpp ===
+#include <cmath>
+#include <algorithm>
+#include "raylib.h"
+#include "ui/Hud.h"
+#include "game/Arena.h"
+#include "game/Difficulty.h"
+#include "game/Theme.h"
+using namespace std;
+
+void dibujarRejilla(){
+    Rectangle a=Arena::area();
+    const int paso=80;
+    const int m=40; //el temblor mueve el mundo unos pixeles
+    for(int x=0;x<=(int)(a.x+a.width)+m;x+=paso) DrawLine(x,(int)a.y-m,x,(int)(a.y+a.height)+m,Theme::REJILLA);
+    for(int y=(int)a.y;y<=(int)(a.y+a.height)+m;y+=paso) DrawLine((int)a.x-m,y,(int)(a.x+a.width)+m,y,Theme::REJILLA);
+}
+
+namespace{
+    Color mezclar(Color a,Color b,float t){
+        return Color{(unsigned char)(a.r+(b.r-a.r)*t),(unsigned char)(a.g+(b.g-a.g)*t),(unsigned char)(a.b+(b.b-a.b)*t),(unsigned char)(a.a+(b.a-a.a)*t)};
+    }
+
+    //rectangulo con dos esquinas cortadas (arriba izquierda y abajo derecha), en sentido antihorario
+    void formaBoton(Rectangle r,float c,Vector2 p[6]){
+        p[0]={r.x+c,r.y};
+        p[1]={r.x,r.y+c};
+        p[2]={r.x,r.y+r.height};
+        p[3]={r.x+r.width-c,r.y+r.height};
+        p[4]={r.x+r.width,r.y+r.height-c};
+        p[5]={r.x+r.width,r.y};
+    }
+
+    void rellenar(const Vector2 p[6],Color col){
+        Vector2 cen={0.0F,0.0F};
+        for(int i=0;i<6;i++){
+            cen.x+=p[i].x/6.0F;
+            cen.y+=p[i].y/6.0F;
+        }
+        Vector2 abanico[8]={cen,p[0],p[1],p[2],p[3],p[4],p[5],p[0]};
+        DrawTriangleFan(abanico,8,col);
+    }
+
+    void contorno(const Vector2 p[6],float grosor,Color col){
+        for(int i=0;i<6;i++) DrawLineEx(p[i],p[(i+1)%6],grosor,col);
+    }
+
+    Rectangle rectBoton(int i){
+        const float W=(float)GetScreenWidth();
+        const float H=(float)GetScreenHeight();
+        const float w=min(640.0F,W*0.6F);
+        const float h=84.0F;
+        const float sep=22.0F;
+        float total=NUM_DIFICULTADES*h+(NUM_DIFICULTADES-1)*sep;
+        float y0=H/2-total/2+50.0F;
+        return {(W-w)/2,y0+i*(h+sep),w,h};
+    }
+}
+
+int botonBajoMouse(){
+    Vector2 m=GetMousePosition();
+    for(int i=0;i<NUM_DIFICULTADES;i++){
+        if(CheckCollisionPointRec(m,rectBoton(i))) return i;
+    }
+    return -1;
+}
+
+void dibujarMenu(int seleccion){
+    const int W=GetScreenWidth();
+    const int H=GetScreenHeight();
+    static float anim[NUM_DIFICULTADES]={}; //0 = reposo, 1 = seleccionado (transicion suave)
+    float dt=GetFrameTime();
+
+    //titulo
+    const char* titulo="Selecciona la dificultad";
+    int ancho=MeasureText(titulo,48);
+    int ty=(int)rectBoton(0).y-110;
+    DrawText(titulo,(W-ancho)/2,ty,48,Theme::TEXTO);
+    DrawRectangle((W-ancho)/2,ty+62,ancho,3,Theme::JUGADOR);
+
+    for(int i=0;i<NUM_DIFICULTADES;i++){
+        float meta=(i==seleccion) ? 1.0F : 0.0F;
+        anim[i]+=(meta-anim[i])*min(1.0F,14.0F*dt);
+        float k=anim[i];
+
+        Rectangle r=rectBoton(i);
+        r.x+=14.0F*k; //el seleccionado se adelanta un poco
+        const float c=18.0F; //tamano de la esquina cortada
+        Vector2 p[6];
+
+        //resplandor alrededor del seleccionado
+        for(int g=2;g>=1;g--){
+            Rectangle gr={r.x-g*7.0F,r.y-g*7.0F,r.width+g*14.0F,r.height+g*14.0F};
+            formaBoton(gr,c+g*3.0F,p);
+            rellenar(p,Fade(Theme::JUGADOR,0.06F*k));
+        }
+
+        formaBoton(r,c,p);
+        rellenar(p,mezclar(Theme::PANEL,Theme::HUD,k)); //se oscurece al seleccionarlo
+        contorno(p,2.0F,mezclar(Theme::BORDE,Theme::JUGADOR,k));
+        DrawRectangle((int)r.x,(int)(r.y+c),4,(int)(r.height-c),Fade(Theme::JUGADOR,k)); //barra de acento
+
+        //numero en un recuadro
+        const float tag=36.0F;
+        Rectangle t={r.x+26.0F,r.y+(r.height-tag)/2,tag,tag};
+        DrawRectangleLinesEx(t,2.0F,mezclar(Theme::BORDE,Theme::JUGADOR,k));
+        const char* num=TextFormat("%d",i+1);
+        DrawText(num,(int)(t.x+(tag-MeasureText(num,24))/2),(int)(t.y+(tag-24)/2),24,mezclar(Theme::TEXTO_SEC,Theme::JUGADOR,k));
+
+        //nombre
+        DrawText(getConfig(i).nombre,(int)(t.x+tag+22),(int)(r.y+(r.height-34)/2),34,mezclar(Theme::TEXTO_SEC,Theme::TEXTO,k));
+
+        //segmentos de dificultad
+        const float sw=16.0F,sh=8.0F,sg=5.0F;
+        float sx=r.x+r.width-30.0F-NUM_DIFICULTADES*(sw+sg)+sg;
+        for(int s=0;s<NUM_DIFICULTADES;s++){
+            Rectangle seg={sx+s*(sw+sg),r.y+(r.height-sh)/2,sw,sh};
+            if(s<=i) DrawRectangleRec(seg,mezclar(Theme::TEXTO_SEC,Theme::JUGADOR,k));
+            else DrawRectangleLinesEx(seg,1.0F,Fade(Theme::TEXTO_SEC,0.5F));
+        }
+
+        //multiplicador de puntos
+        const char* pts=TextFormat("x%.1F puntos",getConfig(i).multPuntos);
+        DrawText(pts,(int)(sx-24-MeasureText(pts,20)),(int)(r.y+(r.height-20)/2),20,mezclar(Theme::TEXTO_SEC,Theme::MONEDA,k));
+    }
+}
+
+void dibujarHud(int puntos,const char* dificultad,int nivel,float tiempo){
+    const int W=GetScreenWidth();
+    const int alto=(int)Arena::HUD_ALTO;
+    const int tam=28;
+    const int y=(alto-tam)/2;
+    const int margen=20;
+
+    DrawRectangle(0,0,W,alto,Theme::HUD);
+    DrawRectangle(0,alto-2,W,2,Theme::JUGADOR); //linea de neon en el borde inferior
+
+    //Puntaje
+    DrawText(TextFormat("Puntaje: %d",puntos),margen,y,tam,Theme::TEXTO);
+
+    //Tiempo
+    int min=(int)tiempo/60;
+    int seg=(int)tiempo%60;
+    const char* textTiempo=TextFormat("%02d:%02d",min,seg);
+    DrawText(textTiempo,W/4-MeasureText(textTiempo,tam)/2,y,tam,Theme::TEXTO);
+
+    //Dificultad
+    DrawText(dificultad,(W-MeasureText(dificultad,tam))/2,y,tam,Theme::TEXTO);
+
+    //Nivel
+    const char* textNivel=TextFormat("Nivel %d",nivel);
+    DrawText(textNivel,W-MeasureText(textNivel,tam)-margen,y,tam,Theme::TEXTO);
+}
+
+void dibujarCargas(const Player& jugador){
+    const int W=GetScreenWidth();
+    const int r=14;
+    const int sep=44;
+    int n=jugador.getMaxCargas();
+    int x0=W*3/4-(n-1)*sep/2;
+    float y=Arena::HUD_ALTO/2;
+    for(int i=0;i<n;i++){
+        Vector2 c={(float)(x0+i*sep),y};
+        if(i<jugador.getCargas()) DrawCircleV(c,r,Theme::JUGADOR);
+        else{
+            DrawCircleLinesV(c,r,Theme::JUGADOR);
+            if(i==jugador.getCargas()) DrawCircleSector(c,r,-90.0F,-90.0F+360.0F*jugador.getProgresoRecarga(),32,Fade(Theme::JUGADOR,0.5F));
+        }
+    }
+}
+
+void dibujarVidas(const Player& jugador){
+    const int W=GetScreenWidth();
+    const int r=12;
+    const int sep=34;
+    int n=jugador.getMaxVidas();
+    int x0=W*3/8-(n-1)*sep/2;
+    float y=Arena::HUD_ALTO/2;
+    for(int i=0;i<n;i++){
+        Vector2 c={(float)(x0+i*sep),y};
+        if(i<jugador.getVidas()) DrawCircleV(c,r,Theme::VIDA_HUD);
+        else DrawCircleLinesV(c,r,Fade(Theme::VIDA_HUD,0.5F));
+    }
+}
+
+void dibujarAnuncio(int nivel,const char* reto,float progreso){
+    Vector2 m=Arena::centro();
+    float alfa=min(1.0F,sin(PI*progreso)*2.0F); //aparece, se mantiene y se va
+    const char* t1=TextFormat("NIVEL %d",nivel);
+    DrawText(t1,(int)m.x-MeasureText(t1,80)/2,(int)m.y-70,80,Fade(Theme::TEXTO,alfa));
+    DrawText(reto,(int)m.x-MeasureText(reto,36)/2,(int)m.y+20,36,Fade(Theme::JUGADOR,alfa));
+}
+
+void dibujarAlertaBomba(float urgencia){ //urgencia: 0.0 recien puesta, 1.0 a punto de explotar
+    Rectangle a=Arena::area();
+    float pulso=0.5F+0.5F*sin((float)GetTime()*(5.0F+10.0F*urgencia));
+    float alfa=(0.18F+0.32F*urgencia)*(0.4F+0.6F*pulso);
+    Color r=Fade(Theme::PELIGRO,alfa);
+    Color t=Fade(Theme::PELIGRO,0.0F);
+    const int g=90; //grosor del resplandor
+    DrawRectangleGradientV((int)a.x,(int)a.y,(int)a.width,g,r,t); //arriba
+    DrawRectangleGradientV((int)a.x,(int)(a.y+a.height)-g,(int)a.width,g,t,r); //abajo
+    DrawRectangleGradientH((int)a.x,(int)a.y,g,(int)a.height,r,t); //izquierda
+    DrawRectangleGradientH((int)(a.x+a.width)-g,(int)a.y,g,(int)a.height,t,r); //derecha
+}
+=== src/ui/Hud.h ===
+#pragma once
+#include "entities/Player.h"
+
+void dibujarRejilla();
+void dibujarMenu(int seleccion);
+int botonBajoMouse(); //indice del boton bajo el cursor, o -1
+void dibujarHud(int puntos,const char* dificultad,int nivel,float tiempo);
+void dibujarCargas(const Player& jugador);
+void dibujarVidas(const Player& jugador);
+void dibujarAnuncio(int nivel,const char* reto,float progreso);
+void dibujarAlertaBomba(float urgencia);

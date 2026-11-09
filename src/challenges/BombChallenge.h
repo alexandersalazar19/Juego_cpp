@@ -17,14 +17,7 @@ private:
         float restante;
     };
 
-    struct Explosion{ //onda expansiva en camino: dana al jugador cuando lo alcanza
-        Vector2 pos;
-        float t;
-        bool golpeo;
-    };
-    
     vector<Bomba> bombas;
-    vector<Explosion> explosiones;
     float cada; //segundos entre bombas
     float proxima;
 };

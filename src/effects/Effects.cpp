@@ -16,6 +16,11 @@ namespace{
     const float DURACION_BOLA=0.35F;
     const int N_CHISPAS=36;
     const int N_BRASAS=16;
+    const float VELOCIDAD_ONDA=4500.0F; //px/s a la que viaja la onda (solo decoracion)
+    const int N_LLAMAS=70; //rafaga inicial de llamas
+    const float DURACION_FOGATA=1.0F; //segundos que sigue ardiendo el sitio
+    const float LLAMAS_POR_SEG=130.0F; //al encenderse (baja hasta 0)
+    const float HUMO_POR_SEG=18.0F;
 
     //secuencia de muerte (segundos reales)
     const float T_EXPLOSION=1.1F; //cuando explota la bolita
@@ -24,19 +29,33 @@ namespace{
     const float ESCALA_FINAL=0.5F; //velocidad con la que termina
     const float OSCURIDAD_MAX=0.78F;
     const float DURACION_FLASH=0.15F;
+
+    //distancia a la que la onda ya cubrio toda la zona de juego
+    float alcanceOnda(Vector2 pos){
+        Rectangle a=Arena::area();
+        float dx=max(pos.x-a.x,a.x+a.width-pos.x); //hasta la esquina mas lejana
+        float dy=max(pos.y-a.y,a.y+a.height-pos.y);
+        return sqrt(dx*dx+dy*dy)+80.0F;
+    }
+
+    Color mezclar(Color a,Color b,float t){
+        return Color{(unsigned char)(a.r+(b.r-a.r)*t),(unsigned char)(a.g+(b.g-a.g)*t),(unsigned char)(a.b+(b.b-a.b)*t),255};
+    }
+
+    //color de una llama segun su edad: f=1 recien nacida, f=0 a punto de apagarse
+    Color colorLlama(float f){
+        if(f>0.70F) return mezclar(Theme::MONEDA,Theme::TEXTO,(f-0.70F)/0.30F); //casi blanca
+        if(f>0.40F) return mezclar(Theme::AVISO,Theme::MONEDA,(f-0.40F)/0.30F); //amarilla
+        return mezclar(Theme::PELIGRO,Theme::AVISO,f/0.40F); //naranja y roja
+    }
 }
 
 void Effects::sacudir(float duracion,float amplitud){
+    float actual=(temblor>0) ? amplitudTemblor*temblor/duracionTemblor : 0.0F;
+    if(amplitud<actual) return; //no pisa un temblor mas fuerte que sigue activo
     temblor=duracion;
     duracionTemblor=duracion;
     amplitudTemblor=amplitud;
-}
-
-float Effects::alcanceOnda(Vector2 pos){
-    Rectangle a=Arena::area();
-    float dx=max(pos.x-a.x,a.x+a.width-pos.x); //hasta la esquina mas lejana
-    float dy=max(pos.y-a.y,a.y+a.height-pos.y);
-    return sqrt(dx*dx+dy*dy)+80.0F;
 }
 
 void Effects::golpe(Vector2 pos,float radioJugador){
@@ -73,6 +92,16 @@ void Effects::explosion(Vector2 pos){
         particulas.push_back({pos,{cos(ang)*rapidez,sin(ang)*rapidez},vida,vida,(float)GetRandomValue(3,6),brasas[i%2],false});
     }
 
+    //rafaga inicial de llamas hacia afuera
+    for(int i=0;i<N_LLAMAS;i++){
+        float ang=GetRandomValue(0,359)*DEG2RAD;
+        float rapidez=(float)GetRandomValue(60,340);
+        float rad=(float)GetRandomValue(0,14);
+        float vida=GetRandomValue(40,95)/100.0F;
+        fuego.push_back({{pos.x+cos(ang)*rad,pos.y+sin(ang)*rad},{cos(ang)*rapidez,sin(ang)*rapidez},vida,vida,(float)GetRandomValue(6,13),false});
+    }
+
+    fogatas.push_back({pos,0.0F,DURACION_FOGATA,0.0F,0.0F}); //y el sitio sigue ardiendo un rato
     sacudir(0.5F,10.0F);
 }
 
@@ -120,6 +149,54 @@ void Effects::update(float dtReal){
         it++;
     }
 
+    //fogatas: siguen soltando llamas y humo mientras se apagan
+    for(auto it=fogatas.begin();it!=fogatas.end();){
+        it->t+=dt;
+        float g=1.0F-it->t/it->duracion; //1 al encenderse, 0 al apagarse
+        if(g<=0){
+            it=fogatas.erase(it);
+            continue;
+        }
+
+        it->acumLlama+=dt*LLAMAS_POR_SEG*g;
+        while(it->acumLlama>=1.0F){
+            it->acumLlama-=1.0F;
+            float ang=GetRandomValue(0,359)*DEG2RAD;
+            float rad=(float)GetRandomValue(0,26);
+            float vida=GetRandomValue(30,65)/100.0F;
+            fuego.push_back({{it->pos.x+cos(ang)*rad,it->pos.y+sin(ang)*rad},{(float)GetRandomValue(-50,50),-(float)GetRandomValue(70,210)},vida,vida,(float)GetRandomValue(4,9),false});
+        }
+
+        it->acumHumo+=dt*HUMO_POR_SEG;
+        while(it->acumHumo>=1.0F){
+            it->acumHumo-=1.0F;
+            float ang=GetRandomValue(0,359)*DEG2RAD;
+            float rad=(float)GetRandomValue(0,18);
+            float vida=GetRandomValue(90,150)/100.0F;
+            fuego.push_back({{it->pos.x+cos(ang)*rad,it->pos.y+sin(ang)*rad},{(float)GetRandomValue(-25,25),-(float)GetRandomValue(40,110)},vida,vida,(float)GetRandomValue(8,14),true});
+        }
+        it++;
+    }
+
+    //llamas y humo
+    for(auto it=fuego.begin();it!=fuego.end();){
+        it->vida-=dt;
+        if(it->vida<=0){
+            it=fuego.erase(it);
+            continue;
+        }
+        if(!it->humo){
+            it->vel.y-=420.0F*dt; //el calor la hace subir
+            it->vel.x+=GetRandomValue(-100,100)/100.0F*500.0F*dt; //y vacila de lado
+        }
+        float roce=max(0.0F,1.0F-(it->humo ? 1.5F : 2.5F)*dt);
+        it->vel.x*=roce;
+        it->vel.y*=roce;
+        it->pos.x+=it->vel.x*dt;
+        it->pos.y+=it->vel.y*dt;
+        it++;
+    }
+
     for(auto it=ondas.begin();it!=ondas.end();){
         it->t+=dt;
         if(it->t>=it->duracion) it=ondas.erase(it);
@@ -134,7 +211,7 @@ void Effects::update(float dtReal){
 
     for(auto it=choques.begin();it!=choques.end();){
         it->t+=dt;
-        if(VELOCIDAD_ONDA_BOMBA*it->t>=it->radioMax) it=choques.erase(it);
+        if(VELOCIDAD_ONDA*it->t>=it->radioMax) it=choques.erase(it);
         else it++;
     }
 
@@ -145,7 +222,7 @@ void Effects::update(float dtReal){
 void Effects::draw() const {
     //onda expansiva: frente brillante, estela que se adelgaza detras y halo delante
     for(const auto& c:choques){
-        float r=VELOCIDAD_ONDA_BOMBA*c.t;
+        float r=VELOCIDAD_ONDA*c.t;
         float f=min(1.0F,r/c.radioMax); //0 al nacer, 1 al cubrir toda la pantalla
         float g=1.0F-f;
         float a=g*sqrt(g); //se desvanece mientras avanza
@@ -155,6 +232,13 @@ void Effects::draw() const {
         DrawRing(c.pos,max(0.0F,r-cola*0.2F),r,0.0F,360.0F,128,Fade(Theme::MONEDA,0.30F*a));
         DrawRing(c.pos,r,r+14.0F,0.0F,360.0F,128,Fade(Theme::AVISO,0.12F*a)); //halo delante del frente
         DrawRing(c.pos,max(0.0F,r-4.0F),r,0.0F,360.0F,128,Fade(Theme::TEXTO,0.95F*a)); //borde brillante
+    }
+
+    //humo: debajo del fuego, crece y se desvanece
+    for(const auto& l:fuego){
+        if(!l.humo) continue;
+        float f=l.vida/l.total;
+        DrawCircleV(l.pos,l.tam*(1.0F+1.5F*(1.0F-f)),Fade(Theme::HUMO,0.35F*f));
     }
 
     //bola de fuego: capas de mas grande y rojo a mas pequeno y blanco
@@ -168,6 +252,15 @@ void Effects::draw() const {
         DrawCircleV(d.pos,r*0.50F,Fade(Theme::MONEDA,0.55F*a));
         DrawCircleV(d.pos,r*0.28F,Fade(Theme::TEXTO,0.95F*a));
     }
+
+    //llamas: mezcla aditiva, donde se superponen suman brillo
+    BeginBlendMode(BLEND_ADDITIVE);
+    for(const auto& l:fuego){
+        if(l.humo) continue;
+        float f=l.vida/l.total; //1 al nacer, 0 al apagarse
+        DrawCircleV(l.pos,l.tam*(0.35F+0.65F*f),Fade(colorLlama(f),min(1.0F,f*1.6F)*0.85F));
+    }
+    EndBlendMode();
 
     for(const auto& o:ondas){
         float f=o.t/o.duracion; //0 al nacer, 1 al terminar
@@ -233,6 +326,8 @@ void Effects::clear(){
     ondas.clear();
     destellos.clear();
     choques.clear();
+    fuego.clear();
+    fogatas.clear();
     temblor=0.0F;
     flash=0.0F;
     muriendo=false;

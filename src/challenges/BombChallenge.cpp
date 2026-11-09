@@ -42,32 +42,14 @@ void BombChallenge::update(float dt,bool activo,Context& ctx){
         }
     }
 
-    //la onda expansiva dana al jugador cuando su borde lo alcanza
-    for(auto it=explosiones.begin();it!=explosiones.end();){
-        it->t+=dt;
-        float r=VELOCIDAD_ONDA_BOMBA*it->t;
-        if(!it->golpeo){
-            float dx=ctx.jugador.getPos().x-it->pos.x;
-            float dy=ctx.jugador.getPos().y-it->pos.y;
-            float d=sqrt(dx*dx+dy*dy);
-            if(r>=d-ctx.jugador.getRadio()){ //el frente llego al jugador
-                it->golpeo=true;
-                bool yaPaso=(r>d+ctx.jugador.getRadio()+VELOCIDAD_ONDA_BOMBA*dt*2.0F); //te teletransportaste detras del frente
-                if(!yaPaso) ctx.jugador.recibirGolpe();
-            }
-        }
-        if(r>=Effects::alcanceOnda(it->pos)) it=explosiones.erase(it);
-        else it++;
-    }
-
     for(auto it=bombas.begin();it!=bombas.end();){
         it->restante-=dt;
         if(CheckCollisionCircles(it->pos,RADIO,ctx.jugador.getPos(),ctx.jugador.getRadio())){
             ctx.puntos+=puntosPor(150,ctx.cfg,ctx.nivel); //la desactivaste
             it=bombas.erase(it);
         }else if(it->restante<=0){
+            ctx.jugador.recibirGolpe(); //explota: dano inmediato, sin forma de esquivarlo
             ctx.efectos.explosion(it->pos);
-            explosiones.push_back({it->pos,0.0F,false});
             it=bombas.erase(it);
         }else it++;
     }

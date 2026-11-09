@@ -9,6 +9,7 @@ namespace Theme{
     constexpr Color TEXTO={225,232,245,255};
     constexpr Color TEXTO_SEC={138,148,171,255};
     constexpr Color VELO={5,6,12,255}; //oscuridad del reto y de la muerte
+    constexpr Color HUMO={96,102,120,255}; //humo de explosiones
     constexpr Color PANEL={40,47,62,255}; //boton en reposo
     constexpr Color BORDE={72,82,106,255}; //contorno en reposo
 
